@@ -1,0 +1,107 @@
+###############################################################################
+# Core dependencies & package managers
+###############################################################################
+node_modules/
+pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun-debug.log*
+
+###############################################################################
+# Next.js build artifacts
+###############################################################################
+.next/
+.next.cache/
+out/                # Static export output (next export)
+.turbo/             # Turborepo / turbo build cache
+.vercel/            # Vercel local project settings (optional to commit)
+
+###############################################################################
+# TypeScript / Build outputs
+###############################################################################
+dist/
+build/
+coverage/
+.nyc_output/
+*.tsbuildinfo
+
+###############################################################################
+# Environment & secrets (keep examples like .env.example tracked)
+###############################################################################
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+###############################################################################
+# Logs & diagnostics
+###############################################################################
+logs/
+*.log
+*.stackdump
+debug.log
+report.[0-9]*.json
+
+###############################################################################
+# OS / Editor / Tooling noise
+###############################################################################
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.idea/
+.vscode/
+*.swp
+*.swo
+*.orig
+*.tmp
+tmp/
+temp/
+
+###############################################################################
+# Lint / Formatter caches
+###############################################################################
+.eslintcache
+.stylelintcache
+
+###############################################################################
+# Testing / Storybook / Cypress
+###############################################################################
+storybook-static/
+cypress/videos/
+cypress/screenshots/
+playwright-report/
+.playwright-cache/
+
+###############################################################################
+# Asset pipelines / Generated media (adjust to your actual runtime folders)
+###############################################################################
+public/uploads/
+public/tmp/
+uploads/
+generated/
+data/cache/
+data/tmp/
+
+###############################################################################
+# Local database / tooling artifacts (uncomment if you add these later)
+###############################################################################
+# sqlite.db
+# sqlite.db-journal
+# prisma/dev.db
+# prisma/dev.db-journal
+
+###############################################################################
+# Misc build / analysis artifacts
+###############################################################################
+*.lcov
+*.tgz
+
+###############################################################################
+# DO NOT IGNORE (just for reference):
+# next-env.d.ts  -> Should be committed (auto-managed by Next.js)
+# package-lock.json / pnpm-lock.yaml / yarn.lock -> Usually commit for deterministic installs
+###############################################################################
