@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Camera } from '@/lib/types';
-import { Camera as CameraIcon, MapPin, Monitor, Plus, Settings, Eye, EyeOff, Globe } from 'lucide-react';
+import { Camera as CameraIcon, MapPin, Monitor, Plus, Settings, Eye, EyeOff, Globe, Zap } from 'lucide-react';
 import IPCameraSetup from '@/components/real-bluetooth-scanner';
 
 export default function CamerasPage() {
@@ -23,6 +23,40 @@ export default function CamerasPage() {
   const [editLoading, setEditLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [testStatus, setTestStatus] = useState<{ [id: string]: string }>({});
+  const [testLoading, setTestLoading] = useState<{ [id: string]: boolean }>({});
+  const [pendingBypass, setPendingBypass] = useState<{ [id: string]: boolean }>({});
+  // Test Detection handler
+  const handleTestDetection = async (cameraIdRaw: string | undefined, insecure?: boolean) => {
+    const cameraId = cameraIdRaw || '';
+    if (!cameraId) return;
+    setTestLoading((prev) => ({ ...prev, [cameraId]: true }));
+    setTestStatus((prev) => ({ ...prev, [cameraId]: '' }));
+    setPendingBypass((prev) => ({ ...prev, [cameraId]: false }));
+    try {
+      const url = `/api/cameras/${cameraId}/test${insecure ? '?insecure=1' : ''}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.success) {
+        setTestStatus((prev) => ({ ...prev, [cameraId]: '✅ Feed reachable!' }));
+      } else {
+        const sslError =
+          (data.error &&
+            (data.error.includes('self-signed certificate') ||
+             data.error.includes('unable to verify the first certificate')));
+        if (sslError && !insecure) {
+          setPendingBypass((prev) => ({ ...prev, [cameraId]: true }));
+          setTestStatus((prev) => ({ ...prev, [cameraId]: `❌ SSL certificate error. Click BYPASS to ignore.` }));
+        } else {
+          setTestStatus((prev) => ({ ...prev, [cameraId]: `❌ ${data.message || data.error || 'Feed not reachable'}` }));
+        }
+      }
+    } catch (err: any) {
+      setTestStatus((prev) => ({ ...prev, [cameraId]: '❌ Error testing feed' }));
+    } finally {
+      setTestLoading((prev) => ({ ...prev, [cameraId]: false }));
+    }
+  };
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -302,7 +336,6 @@ export default function CamerasPage() {
                     <div className={`w-4 h-4 rounded-full ${
                       camera.status === 'online' ? 'bg-green-500' : 'bg-red-500'
                     }`}></div>
-                    
                     <div className="flex-1">
                       <h3 className="font-medium">{camera.name}</h3>
                       <div className="flex items-center space-x-4 text-sm text-gray-500 mt-1">
@@ -317,17 +350,47 @@ export default function CamerasPage() {
                       </div>
                     </div>
                   </div>
-
-                  <div className="flex items-center space-x-3">
-                    <Badge 
-                      variant={camera.status === 'online' ? 'safe' : 'destructive'}
-                    >
-                      {camera.status}
-                    </Badge>
-                    
-                    <Button variant="ghost" size="icon" onClick={() => openEditModal(camera)}>
-                      <Settings className="h-4 w-4" />
-                    </Button>
+                  <div className="flex flex-col items-end">
+                    <div className="flex items-center space-x-3">
+                      <Badge 
+                        variant={camera.status === 'online' ? 'safe' : 'destructive'}
+                      >
+                        {camera.status}
+                      </Badge>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleTestDetection(camera._id || camera.id)}
+                        disabled={testLoading[(camera._id || camera.id) ?? '']}
+                        className="flex items-center gap-1"
+                      >
+                        <Zap className="h-4 w-4" />
+                        {testLoading[(camera._id || camera.id) ?? ''] ? 'Testing...' : 'Test Detection'}
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => openEditModal(camera)}>
+                        <Settings className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {((camera._id || camera.id) && testStatus[(camera._id || camera.id) ?? '']) && (
+                      <>
+                        {pendingBypass[(camera._id || camera.id) ?? ''] ? (
+                          <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded mt-2 flex items-center gap-2">
+                            <span>SSL certificate error. This feed uses a self-signed or invalid certificate.</span>
+                            <Button
+                              size="sm"
+                              className="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded"
+                              onClick={() => handleTestDetection(camera._id || camera.id, true)}
+                            >
+                              BYPASS
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="text-xs mt-1 ml-2" style={{ color: testStatus[(camera._id || camera.id) ?? ''].startsWith('✅') ? 'green' : 'red' }}>
+                            {testStatus[(camera._id || camera.id) ?? '']}
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
