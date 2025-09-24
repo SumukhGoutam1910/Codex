@@ -8,7 +8,8 @@ export interface User {
 }
 
 export interface Camera {
-  id: string;
+  id?: string;
+  _id?: string;
   userId: string;
   name: string;
   rtspUrl: string;

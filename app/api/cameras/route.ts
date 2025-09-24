@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+export const POST = async (request: NextRequest) => {
   try {
     const {
       name,
@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
     } = await request.json();
 
     if (!name || !location) {
+      console.error('[Camera Add] Failure: Name and location are required');
       return NextResponse.json(
         { error: 'Name and location are required' },
         { status: 400 }
@@ -62,23 +63,33 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    const client = await clientPromise;
-    const db = client.db();
-    const camerasCollection = db.collection('cameras');
-    const result = await camerasCollection.insertOne(newCamera);
-    return NextResponse.json({
-      success: true,
-      message: `${name} added successfully to monitoring network`,
-      camera: { ...newCamera, _id: result.insertedId }
-    });
+    let client, db, camerasCollection, result;
+    try {
+      client = await clientPromise;
+      db = client.db();
+      camerasCollection = db.collection('cameras');
+      result = await camerasCollection.insertOne(newCamera);
+      console.log(`✅ [Camera Add] Connection established and camera added: ${name}`);
+      return NextResponse.json({
+        success: true,
+        message: `${name} added successfully to monitoring network`,
+        camera: { ...newCamera, _id: result.insertedId }
+      });
+    } catch (dbError) {
+      console.error('❌ [Camera Add] Connection failure or interrupted:', dbError);
+      return NextResponse.json(
+        { error: 'Failed to add camera (DB connection error)' },
+        { status: 500 }
+      );
+    }
   } catch (error) {
-    console.error('Error adding camera:', error);
+    console.error('❌ [Camera Add] Unexpected error:', error);
     return NextResponse.json(
       { error: 'Failed to add camera' },
       { status: 500 }
     );
   }
-}
+};
 
 
 function generateAutoRtspUrl(deviceType?: string, connectionMethod?: string): string {

@@ -314,7 +314,7 @@ export default function DashboardPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => simulateDetection(camera.id)}
+                          onClick={() => camera.id && simulateDetection(camera.id)}
                           className="ml-2"
                         >
                           <Zap className="h-4 w-4 mr-1" />

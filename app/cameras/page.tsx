@@ -17,6 +17,12 @@ export default function CamerasPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showRealScanner, setShowRealScanner] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [editingCamera, setEditingCamera] = useState<Camera | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editUrl, setEditUrl] = useState('');
+  const [editLoading, setEditLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -49,28 +55,76 @@ export default function CamerasPage() {
     }
   }, [user, isLoading, router]);
 
-  if (isLoading || loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500"></div>
-      </div>
-    );
-  }
+  const openEditModal = (camera: Camera) => {
+  setEditingCamera(camera);
+  setEditName(camera.name);
+  setEditUrl(camera.rtspUrl);
+  setErrorMsg('');
+  };
 
-  if (!user || (user.role !== 'admin' && user.role !== 'user')) return null;
+  const closeEditModal = () => {
+    setEditingCamera(null);
+    setEditName('');
+    setEditUrl('');
+    setEditLoading(false);
+    setDeleteLoading(false);
+    setErrorMsg('');
+  };
+
+  const handleEditSave = async () => {
+    if (!editingCamera) return;
+    setEditLoading(true);
+    setErrorMsg('');
+    try {
+      const response = await fetch(`/api/cameras/${editingCamera._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editName, rtspUrl: editUrl }),
+      });
+      if (!response.ok) throw new Error('Failed to update camera');
+      // Refresh camera list
+      const url = user?.role === 'user' ? `/api/cameras?userId=${user.id}` : '/api/cameras';
+      const data = await (await fetch(url)).json();
+      setCameras(data);
+      closeEditModal();
+    } catch (err) {
+      setErrorMsg('Failed to update camera.');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!editingCamera) return;
+    setDeleteLoading(true);
+    setErrorMsg('');
+    try {
+      const response = await fetch(`/api/cameras/${editingCamera._id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to delete camera');
+      // Refresh camera list
+      const url = user?.role === 'user' ? `/api/cameras?userId=${user.id}` : '/api/cameras';
+      const data = await (await fetch(url)).json();
+      setCameras(data);
+      closeEditModal();
+    } catch (err) {
+      setErrorMsg('Failed to delete camera.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   const handleAddCamera = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    
     const newCamera = {
       name: formData.get('name') as string,
       location: formData.get('location') as string,
       rtspUrl: formData.get('rtspUrl') as string,
       fullAddress: formData.get('location') as string, // Use location as address
-      userId: user.id, // Add current user's ID
+      userId: user?.id, // Add current user's ID
     };
-
     try {
       const response = await fetch('/api/cameras', {
         method: 'POST',
@@ -79,12 +133,13 @@ export default function CamerasPage() {
         },
         body: JSON.stringify(newCamera),
       });
-
       if (response.ok) {
-        // In a real app, you'd fetch the updated list or add the new camera to state
         setShowAddForm(false);
-        // Reset form
         (e.target as HTMLFormElement).reset();
+        // Refresh camera list
+        const url = user?.role === 'user' ? `/api/cameras?userId=${user.id}` : '/api/cameras';
+        const data = await (await fetch(url)).json();
+        setCameras(data);
       }
     } catch (error) {
       console.error('Error adding camera:', error);
@@ -100,16 +155,16 @@ export default function CamerasPage() {
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              {user.role === 'user' ? 'My Cameras' : 'Camera Management'}
+              {user?.role === 'user' ? 'My Cameras' : 'Camera Management'}
             </h1>
             <p className="mt-2 text-gray-600 dark:text-gray-400">
-              {user.role === 'user' 
+              {user?.role === 'user' 
                 ? 'Add and manage your personal cameras for fire detection'
                 : 'System overview of all registered cameras'
               }
             </p>
           </div>
-          {user.role === 'user' && (
+          {user?.role === 'user' && (
             <div className="flex gap-2">
               <Button 
                 onClick={() => setShowAddForm(true)}
@@ -119,7 +174,7 @@ export default function CamerasPage() {
                 Add Camera Manually
               </Button>
               <Button 
-                onClick={() => setShowRealScanner(true)}
+                onClick={() => setShowAddForm(true)}
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 Add IP Camera
@@ -160,22 +215,6 @@ export default function CamerasPage() {
             </CardContent>
           </Card>
         </div>
-
-        {/* IP Camera Setup Only */}
-        {showRealScanner && (
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Add IP Camera</h2>
-              <Button 
-                variant="outline" 
-                onClick={() => setShowRealScanner(false)}
-              >
-                Close
-              </Button>
-            </div>
-            <IPCameraSetup />
-          </div>
-        )}
 
         {/* Add Camera Form */}
         {showAddForm && (
@@ -258,7 +297,7 @@ export default function CamerasPage() {
           <CardContent>
             <div className="space-y-4">
               {cameras.map((camera) => (
-                <div key={camera.id} className="flex items-center justify-between p-4 border rounded-lg">
+                <div key={camera._id} className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="flex items-center space-x-4">
                     <div className={`w-4 h-4 rounded-full ${
                       camera.status === 'online' ? 'bg-green-500' : 'bg-red-500'
@@ -286,7 +325,7 @@ export default function CamerasPage() {
                       {camera.status}
                     </Badge>
                     
-                    <Button variant="ghost" size="icon">
+                    <Button variant="ghost" size="icon" onClick={() => openEditModal(camera)}>
                       <Settings className="h-4 w-4" />
                     </Button>
                   </div>
@@ -314,6 +353,41 @@ export default function CamerasPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Camera Edit/Delete Modal */}
+        {editingCamera && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-6 w-full max-w-md">
+              <h2 className="text-lg font-semibold mb-4">Edit Camera</h2>
+              <div className="space-y-3">
+                <label className="block text-sm font-medium">Name</label>
+                <input
+                  className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-red-500"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  disabled={editLoading || deleteLoading}
+                />
+                <label className="block text-sm font-medium">RTSP URL</label>
+                <input
+                  className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-red-500"
+                  value={editUrl}
+                  onChange={e => setEditUrl(e.target.value)}
+                  disabled={editLoading || deleteLoading}
+                />
+                {errorMsg && <div className="text-red-600 text-sm">{errorMsg}</div>}
+                <div className="flex gap-2 mt-4">
+                  <Button onClick={handleEditSave} disabled={editLoading || deleteLoading} className="bg-red-600 hover:bg-red-700">
+                    {editLoading ? 'Saving...' : 'Save'}
+                  </Button>
+                  <Button onClick={closeEditModal} variant="outline" disabled={editLoading || deleteLoading}>Cancel</Button>
+                  <Button onClick={handleDelete} variant="destructive" disabled={editLoading || deleteLoading}>
+                    {deleteLoading ? 'Deleting...' : 'Delete'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Help Section - Only for Users (IP Cameras Only) */}
         {user?.role === 'user' && (
