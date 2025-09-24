@@ -12,7 +12,7 @@ export interface Camera {
   _id?: string;
   userId: string;
   name: string;
-  rtspUrl: string;
+  streamUrl: string;
   location: string;
   fullAddress?: string;
   status: 'online' | 'offline';

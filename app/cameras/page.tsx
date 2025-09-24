@@ -58,7 +58,7 @@ export default function CamerasPage() {
   const openEditModal = (camera: Camera) => {
   setEditingCamera(camera);
   setEditName(camera.name);
-  setEditUrl(camera.rtspUrl);
+  setEditUrl(camera.streamUrl);
   setErrorMsg('');
   };
 
@@ -79,7 +79,7 @@ export default function CamerasPage() {
       const response = await fetch(`/api/cameras/${editingCamera._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName, rtspUrl: editUrl }),
+        body: JSON.stringify({ name: editName, streamUrl: editUrl }),
       });
       if (!response.ok) throw new Error('Failed to update camera');
       // Refresh camera list
@@ -121,7 +121,7 @@ export default function CamerasPage() {
     const newCamera = {
       name: formData.get('name') as string,
       location: formData.get('location') as string,
-      rtspUrl: formData.get('rtspUrl') as string,
+      streamUrl: formData.get('streamUrl') as string,
       fullAddress: formData.get('location') as string, // Use location as address
       userId: user?.id, // Add current user's ID
     };
@@ -256,14 +256,14 @@ export default function CamerasPage() {
                 </div>
 
                 <div className="md:col-span-2 space-y-2">
-                  <label htmlFor="rtspUrl" className="text-sm font-medium">
-                    RTSP URL *
+                  <label htmlFor="streamUrl" className="text-sm font-medium">
+                    Camera Stream URL *
                   </label>
                   <input
-                    id="rtspUrl"
-                    name="rtspUrl"
+                    id="streamUrl"
+                    name="streamUrl"
                     type="text"
-                    placeholder="rtsp://192.168.1.100:554/stream"
+                    placeholder="e.g. http://192.168.1.100:8080/stream or rtsp://..."
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
                     required
                   />
@@ -312,7 +312,7 @@ export default function CamerasPage() {
                         </span>
                         <span className="flex items-center">
                           <Monitor className="h-3 w-3 mr-1" />
-                          {camera.rtspUrl}
+                          {camera.streamUrl}
                         </span>
                       </div>
                     </div>
@@ -373,6 +373,7 @@ export default function CamerasPage() {
                   value={editUrl}
                   onChange={e => setEditUrl(e.target.value)}
                   disabled={editLoading || deleteLoading}
+                  placeholder="e.g. http://192.168.1.100:8080/stream or rtsp://..."
                 />
                 {errorMsg && <div className="text-red-600 text-sm">{errorMsg}</div>}
                 <div className="flex gap-2 mt-4">

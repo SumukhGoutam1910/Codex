@@ -24,7 +24,7 @@ export const POST = async (request: NextRequest) => {
   try {
     const {
       name,
-      rtspUrl,
+      streamUrl,
       location,
       fullAddress,
       streamType,
@@ -41,14 +41,15 @@ export const POST = async (request: NextRequest) => {
       );
     }
 
-    // Auto-generate RTSP URL if not provided (for discovered devices)
-    const autoRtspUrl = rtspUrl || generateAutoRtspUrl(deviceType, connectionMethod);
+
+  // Auto-generate stream URL if not provided (for discovered devices)
+  const autoStreamUrl = streamUrl || generateAutoStreamUrl(deviceType, connectionMethod);
 
     // Create new camera object
     const newCamera = {
       userId: userId || 'system',
       name,
-      rtspUrl: autoRtspUrl,
+      streamUrl: autoStreamUrl,
       location,
       fullAddress: fullAddress || location,
       status: 'online',
@@ -59,7 +60,7 @@ export const POST = async (request: NextRequest) => {
         monitoringStarted: new Date().toISOString(),
         deviceType,
         connectionMethod,
-        autoConfigured: !rtspUrl
+        autoConfigured: !streamUrl
       }
     };
 
@@ -92,7 +93,7 @@ export const POST = async (request: NextRequest) => {
 };
 
 
-function generateAutoRtspUrl(deviceType?: string, connectionMethod?: string): string {
+function generateAutoStreamUrl(deviceType?: string, connectionMethod?: string): string {
   switch (deviceType) {
     case 'mobile_phone':
       return `camdroid://mobile-${Date.now()}:8080/video`;
