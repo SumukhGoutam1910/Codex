@@ -1,8 +1,5 @@
 
-
 import { HeroParallax } from '@/components/ui/hero-parallax';
-import { Navbar } from '@/components/navbar';
-
 
 const heroProducts = [
   {
@@ -85,7 +82,6 @@ const heroProducts = [
 export default function HomePage() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
-      <Navbar />
       {/* Hero Parallax Animation */}
       <section className="relative z-10">
         <HeroParallax products={heroProducts} />

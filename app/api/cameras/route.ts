@@ -1,34 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { mockCameras } from '@/lib/mock-data';
+import clientPromise from '@/lib/mongodb';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get('userId');
-  
-  if (userId) {
-    // Return cameras for specific user
-    const userCameras = mockCameras.filter(camera => camera.userId === userId);
-    return NextResponse.json(userCameras);
+  try {
+    const client = await clientPromise;
+    const db = client.db();
+    const camerasCollection = db.collection('cameras');
+    let query = {};
+    if (userId) {
+      query = { userId };
+    }
+    const cameras = await camerasCollection.find(query).toArray();
+    return NextResponse.json(cameras);
+  } catch (error) {
+    console.error('Error fetching cameras:', error);
+    return NextResponse.json({ error: 'Failed to fetch cameras' }, { status: 500 });
   }
-  
-  // Return all cameras (admin view)
-  return NextResponse.json(mockCameras);
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { 
-      name, 
-      rtspUrl, 
-      location, 
-      fullAddress, 
-      streamType, 
+    const {
+      name,
+      rtspUrl,
+      location,
+      fullAddress,
+      streamType,
       userId,
       deviceType,
-      connectionMethod 
+      connectionMethod
     } = await request.json();
-    
-    // For device discovery, we have more flexible requirements
+
     if (!name || !location) {
       return NextResponse.json(
         { error: 'Name and location are required' },
@@ -36,21 +40,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate new camera ID
-    const newId = 'c' + (mockCameras.length + 1);
-    
     // Auto-generate RTSP URL if not provided (for discovered devices)
     const autoRtspUrl = rtspUrl || generateAutoRtspUrl(deviceType, connectionMethod);
-    
+
     // Create new camera object
     const newCamera = {
-      id: newId,
-      userId: userId || 'system', // Default to system if not specified
+      userId: userId || 'system',
       name,
       rtspUrl: autoRtspUrl,
       location,
-      fullAddress: fullAddress || location, // Use location as fallback
-      status: 'online' as const,
+      fullAddress: fullAddress || location,
+      status: 'online',
       addedAt: new Date().toISOString(),
       streamType: streamType || determineStreamType(deviceType, connectionMethod),
       metadata: {
@@ -58,17 +58,18 @@ export async function POST(request: NextRequest) {
         monitoringStarted: new Date().toISOString(),
         deviceType,
         connectionMethod,
-        autoConfigured: !rtspUrl // Mark as auto-configured if RTSP was generated
+        autoConfigured: !rtspUrl
       }
     };
 
-    // Add to mock data (in real app, save to database)
-    mockCameras.push(newCamera);
-    
-    return NextResponse.json({ 
-      success: true, 
+    const client = await clientPromise;
+    const db = client.db();
+    const camerasCollection = db.collection('cameras');
+    const result = await camerasCollection.insertOne(newCamera);
+    return NextResponse.json({
+      success: true,
       message: `${name} added successfully to monitoring network`,
-      camera: newCamera
+      camera: { ...newCamera, _id: result.insertedId }
     });
   } catch (error) {
     console.error('Error adding camera:', error);
@@ -78,6 +79,7 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
 
 function generateAutoRtspUrl(deviceType?: string, connectionMethod?: string): string {
   switch (deviceType) {
@@ -96,6 +98,7 @@ function generateAutoRtspUrl(deviceType?: string, connectionMethod?: string): st
       return `rtsp://192.168.1.${100 + Math.floor(Math.random() * 100)}:554/stream`;
   }
 }
+
 
 function determineStreamType(deviceType?: string, connectionMethod?: string): 'mobile_camdroid' | 'ip_camera' | 'webcam' {
   if (deviceType === 'mobile_phone') return 'mobile_camdroid';

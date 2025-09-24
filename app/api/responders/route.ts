@@ -1,68 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { mockResponders } from '@/lib/mock-data';
+
+import clientPromise from '@/lib/mongodb';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status');
   const available = searchParams.get('available');
-  
-  let responders = [...mockResponders];
-  
-  if (status) {
-    responders = responders.filter(responder => responder.status === status);
+  try {
+    const client = await clientPromise;
+    const db = client.db();
+    let query: any = {};
+    if (status) query.status = status;
+    if (available !== null) query.available = available === 'true';
+    const responders = await db.collection('responders').find(query).toArray();
+    return NextResponse.json({
+      totalUnits: await db.collection('responders').countDocuments(),
+      availableUnits: await db.collection('responders').countDocuments({ available: true }),
+      respondingUnits: await db.collection('responders').countDocuments({ status: 'responding' }),
+      engagedUnits: await db.collection('responders').countDocuments({ status: 'engaged' }),
+      responders
+    });
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed to fetch responders' }, { status: 500 });
   }
-  
-  if (available !== null) {
-    const isAvailable = available === 'true';
-    responders = responders.filter(responder => responder.available === isAvailable);
-  }
-  
-  return NextResponse.json({
-    totalUnits: mockResponders.length,
-    availableUnits: mockResponders.filter(r => r.available).length,
-    respondingUnits: mockResponders.filter(r => r.status === 'responding').length,
-    engagedUnits: mockResponders.filter(r => r.status === 'engaged').length,
-    responders: responders
-  });
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { action, responderId } = await request.json();
-
-    const responder = mockResponders.find(r => r.id === responderId);
+    const { action, responderId, message } = await request.json();
+    const client = await clientPromise;
+    const db = client.db();
+    const respondersCol = db.collection('responders');
+    const responder = await respondersCol.findOne({ id: responderId });
     if (!responder) {
-      return NextResponse.json(
-        { error: 'Responder not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Responder not found' }, { status: 404 });
     }
-
     switch (action) {
       case 'mark_available':
-        responder.available = true;
-        responder.status = 'idle';
-        responder.currentIncident = undefined;
-        responder.engagedAt = undefined;
-        
-        return NextResponse.json({
-          success: true,
-          message: `${responder.unit} marked as available`,
-          responder
-        });
-
+        await respondersCol.updateOne(
+          { id: responderId },
+          { $set: { available: true, status: 'idle', currentIncident: undefined, engagedAt: undefined } }
+        );
+        return NextResponse.json({ success: true, message: `${responder.unit} marked as available` });
       case 'mark_unavailable':
-        responder.available = false;
-        responder.status = 'returning';
-        
-        return NextResponse.json({
-          success: true,
-          message: `${responder.unit} marked as unavailable`,
-          responder
-        });
-
+        await respondersCol.updateOne(
+          { id: responderId },
+          { $set: { available: false, status: 'returning' } }
+        );
+        return NextResponse.json({ success: true, message: `${responder.unit} marked as unavailable` });
       case 'get_location':
-        // In a real system, this would get GPS location
         return NextResponse.json({
           success: true,
           location: responder.location,
@@ -72,28 +58,17 @@ export async function POST(request: NextRequest) {
           },
           responder
         });
-
       case 'send_message':
-        const { message } = await request.json();
-        
         return NextResponse.json({
           success: true,
           message: `Message sent to ${responder.unit}`,
           sentMessage: message,
           timestamp: new Date().toISOString()
         });
-
       default:
-        return NextResponse.json(
-          { error: 'Invalid action' },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
   } catch (error) {
-    console.error('Error updating responder:', error);
-    return NextResponse.json(
-      { error: 'Failed to update responder' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to update responder' }, { status: 500 });
   }
 }
