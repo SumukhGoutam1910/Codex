@@ -7,13 +7,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Camera, Incident } from '@/lib/types';
-import { AlertTriangle, Camera as CameraIcon, Shield, Users, Eye, Plus, Settings, Zap } from 'lucide-react';
+import { AlertTriangle, Camera as CameraIcon, Shield, Users, Eye, Plus, Settings, Zap, RefreshCw, Bot } from 'lucide-react';
 
 export default function DashboardPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [backgroundMonitorStatus, setBackgroundMonitorStatus] = useState<{
+    isActive: boolean;
+    lastCheck: Date | null;
+    camerasMonitored: number;
+  }>({
+    isActive: false,
+    lastCheck: null,
+    camerasMonitored: 0
+  });
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -46,15 +57,75 @@ export default function DashboardPage() {
           setCameras(camerasData);
           setIncidents(incidentsData);
         }
+        setLastUpdate(new Date());
       } catch (error) {
         console.error('Error fetching data:', error);
       }
     };
 
+    // Fetch background monitor status
+    const fetchBackgroundStatus = async () => {
+      try {
+        const response = await fetch('/api/cameras/background-monitor');
+        if (response.ok) {
+          const data = await response.json();
+          setBackgroundMonitorStatus({
+            isActive: data.isActive || false,
+            lastCheck: data.lastCheck ? new Date(data.lastCheck) : null,
+            camerasMonitored: data.camerasMonitored || 0
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching background monitor status:', error);
+      }
+    };
+
     if (user && user.role !== 'responder' as any) {
       fetchData();
+      fetchBackgroundStatus();
     }
   }, [user, isLoading, router]);
+
+  // Auto-refresh effect
+  useEffect(() => {
+    if (!autoRefresh || !user || user.role === 'responder' as any) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const [camerasRes, incidentsRes] = await Promise.all([
+          fetch('/api/cameras'),
+          fetch('/api/incidents')
+        ]);
+
+        const camerasData = await camerasRes.json();
+        const incidentsData = await incidentsRes.json();
+
+        if (user?.role === 'user') {
+          setCameras(camerasData.filter((c: Camera) => c.userId === user.id));
+          setIncidents(incidentsData.filter((i: Incident) => i.userId === user.id));
+        } else {
+          setCameras(camerasData);
+          setIncidents(incidentsData);
+        }
+        setLastUpdate(new Date());
+
+        // Also refresh background monitor status
+        const statusRes = await fetch('/api/cameras/background-monitor');
+        if (statusRes.ok) {
+          const statusData = await statusRes.json();
+          setBackgroundMonitorStatus({
+            isActive: statusData.isActive || false,
+            lastCheck: statusData.lastCheck ? new Date(statusData.lastCheck) : null,
+            camerasMonitored: statusData.camerasMonitored || 0
+          });
+        }
+      } catch (error) {
+        console.error('Error during auto-refresh:', error);
+      }
+    }, 3000); // Refresh every 3 seconds
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, user]);
 
   const simulateDetection = async (cameraId: string) => {
     try {
@@ -144,12 +215,52 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            {user.role === 'admin' ? 'System Dashboard' : 'My Dashboard'}
-          </h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">
-            Welcome back, {user.name}. Here&apos;s your fire safety overview.
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                {user.role === 'admin' ? 'System Dashboard' : 'My Dashboard'}
+              </h1>
+              <p className="mt-2 text-gray-600 dark:text-gray-400">
+                Welcome back, {user.name}. Here&apos;s your fire safety overview.
+              </p>
+            </div>
+            
+            {/* Status and Controls */}
+            <div className="flex flex-col items-end space-y-2">
+              {/* Background Monitor Status */}
+              <div className="flex items-center space-x-2 bg-white dark:bg-gray-800 px-3 py-2 rounded-lg border">
+                <Bot className="h-4 w-4" />
+                <span className="text-sm font-medium">AI Monitor:</span>
+                <Badge variant={backgroundMonitorStatus.isActive ? 'safe' : 'destructive'}>
+                  {backgroundMonitorStatus.isActive ? 'Active' : 'Inactive'}
+                </Badge>
+                {backgroundMonitorStatus.camerasMonitored > 0 && (
+                  <span className="text-sm text-gray-500">
+                    {backgroundMonitorStatus.camerasMonitored} cameras
+                  </span>
+                )}
+              </div>
+
+              {/* Auto-refresh Status */}
+              <div className="flex items-center space-x-2 bg-white dark:bg-gray-800 px-3 py-2 rounded-lg border">
+                <RefreshCw className={`h-4 w-4 ${autoRefresh ? 'animate-spin' : ''}`} />
+                <span className="text-sm font-medium">Auto-refresh:</span>
+                <Button
+                  size="sm"
+                  variant={autoRefresh ? 'default' : 'outline'}
+                  onClick={() => setAutoRefresh(!autoRefresh)}
+                  className="h-6 px-2 text-xs"
+                >
+                  {autoRefresh ? 'ON' : 'OFF'}
+                </Button>
+                {lastUpdate && (
+                  <span className="text-xs text-gray-500">
+                    {lastUpdate.toLocaleTimeString()}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -290,7 +401,7 @@ export default function DashboardPage() {
                 </div>
               </CardTitle>
               <CardDescription>
-                Monitor and control your connected cameras • Test emergency response system
+                Monitor and control your connected cameras • Background AI monitoring active
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -302,8 +413,20 @@ export default function DashboardPage() {
                         camera.status === 'online' ? 'bg-green-500' : 'bg-red-500'
                       }`}></div>
                       <div>
-                        <p className="font-medium">{camera.name}</p>
-                        <p className="text-sm text-gray-500">{camera.location}</p>
+                        <div className="flex items-center space-x-2">
+                          <p className="font-medium">{camera.name}</p>
+                          {camera.aiMonitoring?.enabled && (
+                            <Badge variant="default" className="text-xs">
+                              AI: {camera.aiMonitoring.enabled ? 'ON' : 'OFF'}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-2 text-sm text-gray-500">
+                          <span>{camera.location}</span>
+                          {camera.aiMonitoring?.lastCheck && (
+                            <span>• AI: {new Date(camera.aiMonitoring.lastCheck).toLocaleTimeString()}</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -314,7 +437,7 @@ export default function DashboardPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => camera.id && simulateDetection(camera.id)}
+                          onClick={() => router.push('/cameras')}
                           className="ml-2"
                         >
                           <Zap className="h-4 w-4 mr-1" />

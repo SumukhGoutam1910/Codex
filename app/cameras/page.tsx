@@ -126,10 +126,45 @@ export default function CamerasPage() {
   const [testLoading, setTestLoading] = useState<{ [id: string]: boolean }>({});
   const [pendingBypass, setPendingBypass] = useState<{ [id: string]: boolean }>({});
   const [statusCheckLoading, setStatusCheckLoading] = useState(false);
+  const [autoRefreshActive, setAutoRefreshActive] = useState(true);
+  const [lastRefreshTime, setLastRefreshTime] = useState<string | null>(null);
+  const [isAutoRefreshing, setIsAutoRefreshing] = useState(false);
+  const [backgroundMonitorStatus, setBackgroundMonitorStatus] = useState<{running: boolean, intervalId: boolean} | null>(null);
+
+  // Check background monitor status
+  const checkBackgroundMonitorStatus = async () => {
+    try {
+      const response = await fetch('/api/cameras/background-monitor');
+      if (response.ok) {
+        const data = await response.json();
+        setBackgroundMonitorStatus(data.status);
+      }
+    } catch (error) {
+      console.error('Error checking background monitor status:', error);
+    }
+  };
+
+  // Start background monitor
+  const startBackgroundMonitor = async () => {
+    try {
+      const response = await fetch('/api/cameras/background-monitor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start' })
+      });
+      if (response.ok) {
+        await checkBackgroundMonitorStatus();
+      }
+    } catch (error) {
+      console.error('Error starting background monitor:', error);
+    }
+  };
 
   // Check all camera statuses
-  const checkAllCameraStatus = async () => {
-    setStatusCheckLoading(true);
+  const checkAllCameraStatus = async (silent: boolean = false) => {
+    if (!silent) setStatusCheckLoading(true);
+    if (silent) setIsAutoRefreshing(true);
+    
     try {
       const response = await fetch('/api/cameras/check-status', {
         method: 'POST',
@@ -140,12 +175,31 @@ export default function CamerasPage() {
         const url = user?.role === 'user' ? `/api/cameras?userId=${user.id}` : '/api/cameras';
         const data = await (await fetch(url)).json();
         setCameras(data);
+        setLastRefreshTime(new Date().toLocaleTimeString());
       }
     } catch (error) {
       console.error('Error checking camera statuses:', error);
     } finally {
-      setStatusCheckLoading(false);
+      if (!silent) setStatusCheckLoading(false);
+      if (silent) setIsAutoRefreshing(false);
     }
+  };
+
+  // Auto-refresh camera statuses every 3 seconds
+  useEffect(() => {
+    if (!autoRefreshActive || !user || cameras.length === 0) return;
+
+    const interval = setInterval(() => {
+      checkAllCameraStatus(true); // Silent refresh (no loading indicator)
+      checkBackgroundMonitorStatus(); // Also check background monitor status
+    }, 3000); // 3 seconds
+
+    return () => clearInterval(interval);
+  }, [autoRefreshActive, user, cameras.length]);
+
+  // Toggle auto-refresh
+  const toggleAutoRefresh = () => {
+    setAutoRefreshActive(!autoRefreshActive);
   };
 
   // Test Detection handler
@@ -199,6 +253,22 @@ export default function CamerasPage() {
         const response = await fetch(url);
         const data = await response.json();
         setCameras(data);
+        
+        // Check and start background monitor if not running
+        checkBackgroundMonitorStatus();
+        fetch('/api/cameras/background-monitor')
+          .then(res => res.json())
+          .then(data => {
+            if (data.status === 'stopped') {
+              startBackgroundMonitor();
+            }
+          })
+          .catch(console.error);
+        
+        // Initial status check after loading cameras
+        setTimeout(() => {
+          checkAllCameraStatus(true);
+        }, 1000);
       } catch (error) {
         console.error('Error fetching cameras:', error);
       } finally {
@@ -343,6 +413,12 @@ export default function CamerasPage() {
                 : 'System overview of all registered cameras'
               }
             </p>
+            {autoRefreshActive && (
+              <div className="mt-2 flex items-center text-sm text-green-600">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
+                Live monitoring - Camera status updates every 3 seconds
+              </div>
+            )}
           </div>
           {user?.role === 'user' && (
             <div className="flex gap-2">
@@ -511,19 +587,41 @@ export default function CamerasPage() {
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <span>Registered Cameras</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={checkAllCameraStatus}
-                disabled={statusCheckLoading}
-                className="flex items-center gap-1"
-              >
-                <Monitor className="h-4 w-4" />
-                {statusCheckLoading ? 'Checking...' : 'Refresh Status'}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleAutoRefresh}
+                  className={`flex items-center gap-1 ${autoRefreshActive ? 'text-green-600' : 'text-gray-500'}`}
+                >
+                  <div className={`w-2 h-2 rounded-full ${
+                    autoRefreshActive && isAutoRefreshing 
+                      ? 'bg-blue-500 animate-pulse' 
+                      : autoRefreshActive 
+                        ? 'bg-green-500' 
+                        : 'bg-gray-400'
+                  }`}></div>
+                  Auto-refresh {autoRefreshActive ? 'ON' : 'OFF'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => checkAllCameraStatus(false)}
+                  disabled={statusCheckLoading}
+                  className="flex items-center gap-1"
+                >
+                  <Monitor className="h-4 w-4" />
+                  {statusCheckLoading ? 'Checking...' : 'Refresh Now'}
+                </Button>
+              </div>
             </CardTitle>
-            <CardDescription>
-              All cameras currently registered in the system
+            <CardDescription className="flex items-center justify-between">
+              <span>All cameras currently registered in the system</span>
+              {lastRefreshTime && autoRefreshActive && (
+                <span className="text-xs text-gray-500">
+                  Last updated: {lastRefreshTime}
+                </span>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
