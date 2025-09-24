@@ -12,16 +12,29 @@ export interface Camera {
   _id?: string;
   userId: string;
   name: string;
-  streamUrl: string;
+  streamUrl: string; // Local network URL (e.g., http://192.168.1.100:8080/video)
+  remoteStreamUrl?: string; // External access URL (e.g., http://yourname.duckdns.org:8080/video)
   location: string;
   fullAddress?: string;
   status: 'online' | 'offline';
   addedAt?: string;
   streamType?: 'mobile_camdroid' | 'ip_camera' | 'webcam';
+  networkAccess?: {
+    localIP: string; // Internal IP (192.168.1.100)
+    externalURL?: string; // DDNS URL (yourname.duckdns.org)
+    portForwarding?: {
+      externalPort: number; // Router port (8080)
+      internalPort: number; // Camera port (8080)
+    };
+    ddnsProvider?: 'duckdns' | 'no-ip' | 'dynu' | 'custom';
+    lastOnline?: string; // Track when camera was last seen
+  };
   metadata?: {
     aiMonitoring?: boolean;
     monitoringStarted?: string;
     monitoringStopped?: string;
+    monitoringActive?: boolean; // Is AI currently running?
+    monitoringServerStatus?: 'running' | 'stopped' | 'error';
     lastDetection?: {
       timestamp: string;
       type: 'fire' | 'smoke';

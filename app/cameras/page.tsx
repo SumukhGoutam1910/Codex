@@ -125,6 +125,29 @@ export default function CamerasPage() {
   const [testStatus, setTestStatus] = useState<{ [id: string]: string }>({});
   const [testLoading, setTestLoading] = useState<{ [id: string]: boolean }>({});
   const [pendingBypass, setPendingBypass] = useState<{ [id: string]: boolean }>({});
+  const [statusCheckLoading, setStatusCheckLoading] = useState(false);
+
+  // Check all camera statuses
+  const checkAllCameraStatus = async () => {
+    setStatusCheckLoading(true);
+    try {
+      const response = await fetch('/api/cameras/check-status', {
+        method: 'POST',
+      });
+      
+      if (response.ok) {
+        // Refresh camera list to show updated statuses
+        const url = user?.role === 'user' ? `/api/cameras?userId=${user.id}` : '/api/cameras';
+        const data = await (await fetch(url)).json();
+        setCameras(data);
+      }
+    } catch (error) {
+      console.error('Error checking camera statuses:', error);
+    } finally {
+      setStatusCheckLoading(false);
+    }
+  };
+
   // Test Detection handler
   const handleTestDetection = async (cameraIdRaw: string | undefined, insecure?: boolean) => {
     const cameraId = cameraIdRaw || '';
@@ -251,13 +274,26 @@ export default function CamerasPage() {
   const handleAddCamera = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    
     const newCamera = {
       name: formData.get('name') as string,
       location: formData.get('location') as string,
       streamUrl: formData.get('streamUrl') as string,
-      fullAddress: formData.get('location') as string, // Use location as address
-      userId: user?.id, // Add current user's ID
+      remoteStreamUrl: formData.get('remoteUrl') as string || undefined,
+      fullAddress: formData.get('location') as string,
+      userId: user?.id,
+      networkAccess: {
+        localIP: extractIPFromURL(formData.get('streamUrl') as string),
+        externalURL: formData.get('remoteUrl') as string || undefined,
+        ddnsProvider: formData.get('ddnsProvider') as string || undefined,
+      },
+      metadata: {
+        aiMonitoring: true, // Always enabled
+        monitoringActive: false, // Will be set to true if camera is online
+        monitoringServerStatus: 'stopped' as const,
+      }
     };
+
     try {
       const response = await fetch('/api/cameras', {
         method: 'POST',
@@ -266,6 +302,7 @@ export default function CamerasPage() {
         },
         body: JSON.stringify(newCamera),
       });
+      
       if (response.ok) {
         setShowAddForm(false);
         (e.target as HTMLFormElement).reset();
@@ -276,6 +313,16 @@ export default function CamerasPage() {
       }
     } catch (error) {
       console.error('Error adding camera:', error);
+    }
+  };
+
+  // Helper function to extract IP from URL
+  const extractIPFromURL = (url: string): string => {
+    try {
+      const urlObj = new URL(url);
+      return urlObj.hostname;
+    } catch {
+      return '';
     }
   };
 
@@ -355,7 +402,7 @@ export default function CamerasPage() {
             <CardHeader>
               <CardTitle>Add New Camera</CardTitle>
               <CardDescription>
-                Register a new camera to the monitoring system
+                Register a new camera with automatic AI fire/smoke detection
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -390,7 +437,7 @@ export default function CamerasPage() {
 
                 <div className="md:col-span-2 space-y-2">
                   <label htmlFor="streamUrl" className="text-sm font-medium">
-                    Camera Stream URL *
+                    Local Camera Stream URL *
                   </label>
                   <input
                     id="streamUrl"
@@ -400,6 +447,46 @@ export default function CamerasPage() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
                     required
                   />
+                  <p className="text-xs text-gray-500">This is the URL accessible from your local network</p>
+                </div>
+
+                <div className="md:col-span-2 space-y-2">
+                  <label htmlFor="remoteUrl" className="text-sm font-medium">
+                    Remote Access URL (Optional)
+                  </label>
+                  <input
+                    id="remoteUrl"
+                    name="remoteUrl"
+                    type="text"
+                    placeholder="e.g. http://yourname.duckdns.org:8080/stream"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                  <p className="text-xs text-gray-500">URL for accessing camera from outside your network (requires DDNS + port forwarding)</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="ddnsProvider" className="text-sm font-medium">
+                    DDNS Provider (Optional)
+                  </label>
+                  <select
+                    id="ddnsProvider"
+                    name="ddnsProvider"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                  >
+                    <option value="">Select provider</option>
+                    <option value="duckdns">DuckDNS (Free)</option>
+                    <option value="no-ip">No-IP</option>
+                    <option value="dynu">Dynu</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-green-600 flex items-center">
+                    <Zap className="h-4 w-4 mr-2" />
+                    AI Fire/Smoke Detection: Always Enabled
+                  </div>
+                  <p className="text-xs text-gray-500">AI monitoring will automatically start when the camera comes online</p>
                 </div>
 
                 <div className="md:col-span-2 flex space-x-4">
@@ -422,7 +509,19 @@ export default function CamerasPage() {
         {/* Cameras Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Registered Cameras</CardTitle>
+            <CardTitle className="flex items-center justify-between">
+              <span>Registered Cameras</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={checkAllCameraStatus}
+                disabled={statusCheckLoading}
+                className="flex items-center gap-1"
+              >
+                <Monitor className="h-4 w-4" />
+                {statusCheckLoading ? 'Checking...' : 'Refresh Status'}
+              </Button>
+            </CardTitle>
             <CardDescription>
               All cameras currently registered in the system
             </CardDescription>
@@ -444,18 +543,44 @@ export default function CamerasPage() {
                         </span>
                         <span className="flex items-center">
                           <Monitor className="h-3 w-3 mr-1" />
-                          {camera.streamUrl}
+                          {camera.networkAccess?.localIP || 'Local'}
                         </span>
+                        {camera.remoteStreamUrl && (
+                          <span className="flex items-center text-green-600">
+                            <Globe className="h-3 w-3 mr-1" />
+                            Remote Ready
+                          </span>
+                        )}
+                        {camera.metadata?.aiMonitoring && (
+                          <span className="flex items-center text-blue-600">
+                            <Zap className="h-3 w-3 mr-1" />
+                            AI: {camera.status === 'online' && camera.metadata?.monitoringActive ? 'Active' : 'Waiting'}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
                   <div className="flex flex-col items-end">
-                    <div className="flex items-center space-x-3">
+                    <div className="flex items-center space-x-3 mb-2">
                       <Badge 
                         variant={camera.status === 'online' ? 'safe' : 'destructive'}
                       >
                         {camera.status}
                       </Badge>
+                      <Badge 
+                        variant={camera.status === 'online' && camera.metadata?.monitoringActive ? 'safe' : 'secondary'}
+                        className="text-xs"
+                      >
+                        AI: {camera.status === 'online' && camera.metadata?.monitoringActive ? 'ACTIVE' : 'WAITING'}
+                      </Badge>
+                      {camera.networkAccess?.externalURL && (
+                        <Badge variant="outline" className="text-xs">
+                          <Globe className="h-3 w-3 mr-1" />
+                          Remote Ready
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center space-x-2">
                       <Button
                         variant="outline"
                         size="sm"
@@ -464,7 +589,7 @@ export default function CamerasPage() {
                         className="flex items-center gap-1"
                       >
                         <Zap className="h-4 w-4" />
-                        {testLoading[(camera._id || camera.id) ?? ''] ? 'Testing...' : 'Test Detection'}
+                        {testLoading[(camera._id || camera.id) ?? ''] ? 'Testing...' : 'Test Feed'}
                       </Button>
                       <Button
                         variant="outline"
@@ -473,7 +598,7 @@ export default function CamerasPage() {
                         onClick={() => setViewFeedCamera(camera)}
                       >
                         <Eye className="h-4 w-4" />
-                        View Feed
+                        View Live
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => openEditModal(camera)}>
                         <Settings className="h-4 w-4" />

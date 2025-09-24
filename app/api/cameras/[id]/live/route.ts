@@ -4,13 +4,32 @@ import { ObjectId } from 'mongodb';
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   const cameraId = params.id;
+  const { searchParams } = new URL(request.url);
+  const useRemote = searchParams.get('remote') === 'true';
+  
   const camera = await getCamera(cameraId);
   
   if (!camera) {
     return new Response('Camera not found', { status: 404 });
   }
   
-  const streamUrl = camera.streamUrl;
+  // Choose URL based on access type
+  let streamUrl = camera.streamUrl; // Default to local URL
+  
+  if (useRemote && camera.remoteStreamUrl) {
+    streamUrl = camera.remoteStreamUrl;
+    console.log(`[Live Proxy][${cameraId}] Using remote URL: ${streamUrl}`);
+  } else if (useRemote && camera.networkAccess?.externalURL) {
+    // Construct remote URL from network access settings
+    const protocol = streamUrl.startsWith('https') ? 'https' : 'http';
+    const port = camera.networkAccess.portForwarding?.externalPort || '8080';
+    const path = new URL(streamUrl).pathname;
+    streamUrl = `${protocol}://${camera.networkAccess.externalURL}:${port}${path}`;
+    console.log(`[Live Proxy][${cameraId}] Constructed remote URL: ${streamUrl}`);
+  } else {
+    console.log(`[Live Proxy][${cameraId}] Using local URL: ${streamUrl}`);
+  }
+  
   if (!streamUrl) {
     return new Response('No streamUrl set for this camera', { status: 400 });
   }

@@ -45,6 +45,48 @@ export const POST = async (request: NextRequest) => {
   // Auto-generate stream URL if not provided (for discovered devices)
   const autoStreamUrl = streamUrl || generateAutoStreamUrl(deviceType, connectionMethod);
 
+  // Test the stream URL to determine actual status
+  let actualStatus = 'offline';
+  if (autoStreamUrl) {
+    try {
+      console.log(`🔍 Testing stream connectivity: ${autoStreamUrl}`);
+      
+      // Disable SSL verification for testing
+      const originalRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+      if (autoStreamUrl.startsWith('https:')) {
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
+      try {
+        const testResponse = await fetch(autoStreamUrl, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'CameraTestAgent/1.0',
+            'Accept': '*/*'
+          }
+        });
+        
+        clearTimeout(timeoutId);
+        actualStatus = (testResponse.ok || testResponse.status < 500) ? 'online' : 'offline';
+        console.log(`📊 Stream test result: ${actualStatus} (Status: ${testResponse.status})`);
+        
+      } finally {
+        // Restore SSL setting
+        if (originalRejectUnauthorized !== undefined) {
+          process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalRejectUnauthorized;
+        } else {
+          delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+        }
+      }
+    } catch (error: any) {
+      console.log(`❌ Stream unreachable: ${error.message}`);
+      actualStatus = 'offline';
+    }
+  }
+
     // Create new camera object
     const newCamera = {
       userId: userId || 'system',
@@ -52,12 +94,14 @@ export const POST = async (request: NextRequest) => {
       streamUrl: autoStreamUrl,
       location,
       fullAddress: fullAddress || location,
-      status: 'online',
+      status: actualStatus,
       addedAt: new Date().toISOString(),
       streamType: streamType || determineStreamType(deviceType, connectionMethod),
       metadata: {
-        aiMonitoring: true,
-        monitoringStarted: new Date().toISOString(),
+        aiMonitoring: true, // Always enabled
+        monitoringActive: actualStatus === 'online', // Active if camera is online
+        monitoringServerStatus: actualStatus === 'online' ? 'running' : 'stopped',
+        monitoringStarted: actualStatus === 'online' ? new Date().toISOString() : undefined,
         deviceType,
         connectionMethod,
         autoConfigured: !streamUrl
