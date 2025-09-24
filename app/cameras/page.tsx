@@ -3,6 +3,104 @@
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+
+// Live Feed Player component for modal
+function LiveFeedPlayer({ cameraId }: { cameraId: string }) {
+  const [error, setError] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+
+  const handleLoad = () => {
+    setLoading(false);
+    setError('');
+  };
+
+  const handleError = () => {
+    setError('Unable to load live feed');
+    setLoading(false);
+  };
+
+  return (
+    <div className="relative w-full h-[480px] bg-black rounded border">
+      {/* Live indicator */}
+      <div className="absolute top-3 left-3 z-10 flex items-center bg-red-600 text-white px-2 py-1 rounded text-xs font-bold">
+        <div className="w-2 h-2 bg-white rounded-full mr-1 animate-pulse"></div>
+        LIVE
+      </div>
+      
+      {loading && !error && (
+        <div className="absolute inset-0 flex items-center justify-center z-20 bg-black/80">
+          <div className="text-white text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto mb-4"></div>
+            <p className="text-lg">🔴 Connecting to Live Feed...</p>
+            <p className="text-sm text-gray-400 mt-1">Establishing secure connection</p>
+          </div>
+        </div>
+      )}
+
+      {error ? (
+        <div className="w-full h-full flex items-center justify-center">
+          <div className="text-red-400 text-center">
+            <p>❌ Live Feed Unavailable</p>
+            <p className="text-sm mt-2">{error}</p>
+            <button 
+              onClick={() => {
+                setError('');
+                setLoading(true);
+                // Force reload by changing src
+                const img = document.querySelector(`img[data-camera-id="${cameraId}"]`) as HTMLImageElement;
+                if (img) {
+                  img.src = `/api/cameras/${cameraId}/live?t=${Date.now()}`;
+                }
+              }}
+              className="mt-3 px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700"
+            >
+              Retry Connection
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* MJPEG stream using img tag - perfect for live camera feeds */}
+          <img
+            src={`/api/cameras/${cameraId}/live`}
+            alt="Live Camera Feed"
+            data-camera-id={cameraId}
+            className="w-full h-full object-cover rounded border"
+            style={{ background: 'black' }}
+            onLoad={handleLoad}
+            onError={handleError}
+          />
+        </>
+      )}
+      
+      {!error && (
+        <div className="absolute bottom-3 right-3 flex gap-2">
+          <button 
+            onClick={() => {
+              const img = document.querySelector(`img[data-camera-id="${cameraId}"]`) as HTMLImageElement;
+              if (img && img.requestFullscreen) {
+                img.requestFullscreen();
+              }
+            }}
+            className="bg-black/60 text-white p-2 rounded hover:bg-black/80 text-sm"
+            title="Fullscreen"
+          >
+            ⛶
+          </button>
+          <button 
+            onClick={() => {
+              window.open(`/api/cameras/${cameraId}/live`, '_blank');
+            }}
+            className="bg-black/60 text-white p-2 rounded hover:bg-black/80 text-sm"
+            title="Open in New Tab"
+          >
+            ↗
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,6 +116,7 @@ export default function CamerasPage() {
   const [showRealScanner, setShowRealScanner] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editingCamera, setEditingCamera] = useState<Camera | null>(null);
+  const [viewFeedCamera, setViewFeedCamera] = useState<Camera | null>(null);
   const [editName, setEditName] = useState('');
   const [editUrl, setEditUrl] = useState('');
   const [editLoading, setEditLoading] = useState(false);
@@ -367,9 +466,38 @@ export default function CamerasPage() {
                         <Zap className="h-4 w-4" />
                         {testLoading[(camera._id || camera.id) ?? ''] ? 'Testing...' : 'Test Detection'}
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex items-center gap-1"
+                        onClick={() => setViewFeedCamera(camera)}
+                      >
+                        <Eye className="h-4 w-4" />
+                        View Feed
+                      </Button>
                       <Button variant="ghost" size="icon" onClick={() => openEditModal(camera)}>
                         <Settings className="h-4 w-4" />
                       </Button>
+        {/* Live Feed Modal (HLS) */}
+        {viewFeedCamera && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+            <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-4 w-full max-w-2xl relative">
+              <button
+                className="absolute top-2 right-2 text-gray-500 hover:text-gray-800 dark:hover:text-white text-2xl"
+                onClick={() => setViewFeedCamera(null)}
+                aria-label="Close"
+              >
+                &times;
+              </button>
+              <h2 className="text-lg font-semibold mb-2">Live Feed: {viewFeedCamera.name}</h2>
+              {viewFeedCamera._id || viewFeedCamera.id ? (
+                <LiveFeedPlayer cameraId={String(viewFeedCamera._id || viewFeedCamera.id)} />
+              ) : (
+                <div className="text-red-600">Camera ID missing</div>
+              )}
+            </div>
+          </div>
+        )}
                     </div>
                     {((camera._id || camera.id) && testStatus[(camera._id || camera.id) ?? '']) && (
                       <>
