@@ -57,8 +57,15 @@ export const HeroParallax = ({
   return (
     <div
       ref={ref}
-      className="h-[300vh] py-40 overflow-hidden  antialiased relative flex flex-col self-auto [perspective:1000px] [transform-style:preserve-3d]"
+      className="h-[300vh] py-40 overflow-hidden antialiased relative flex flex-col self-auto [perspective:1000px] [transform-style:preserve-3d]"
     >
+      {/* Top right logo image */}
+      <img
+        src="/cctv_camera_with_hands_coming_out_of_its_sides_like_an_emoji_with_hands_and_a_fire_extinguisher_in_its_hands_dousing_a_fire_static.png"
+        alt="Logo"
+           className="absolute top-8 right-8 w-48 h-48 md:w-72 md:h-72 z-20 drop-shadow-xl"
+        style={{ pointerEvents: 'none' }}
+      />
       <Header />
       <motion.div
         style={{
