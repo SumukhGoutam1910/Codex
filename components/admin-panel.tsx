@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, Camera, Users, Activity } from 'lucide-react';
+import { AlertTriangle, Camera, Users, Activity, RefreshCw, Truck, XCircle, Shield, Plus } from 'lucide-react';
 
 interface Detection {
   cameraId: string;
@@ -26,10 +26,41 @@ export default function AdminPanel() {
   const [incidents, setIncidents] = useState<any[]>([]);
   const [responders, setResponders] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [actionLoading, setActionLoading] = useState<{[key: string]: boolean}>({});
 
   useEffect(() => {
     fetchAllData();
   }, []);
+
+  // Auto-refresh effect for real-time updates
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const [aiResponse, incidentResponse, responderResponse] = await Promise.all([
+          fetch('/api/detection'),
+          fetch('/api/incidents'),
+          fetch('/api/responders')
+        ]);
+
+        const aiData = await aiResponse.json();
+        const incidentData = await incidentResponse.json();
+        const responderData = await responderResponse.json();
+
+        setAiStatus(aiData);
+        setIncidents(Array.isArray(incidentData) ? incidentData : incidentData.incidents || []);
+        setResponders(responderData.responders || []);
+        setLastUpdate(new Date());
+      } catch (error) {
+        console.error('Error during auto-refresh:', error);
+      }
+    }, 2000); // Refresh every 2 seconds
+
+    return () => clearInterval(interval);
+  }, [autoRefresh]);
 
   const fetchAllData = async () => {
     try {
@@ -46,6 +77,7 @@ export default function AdminPanel() {
       setAiStatus(aiData);
       setIncidents(Array.isArray(incidentData) ? incidentData : incidentData.incidents || []);
       setResponders(responderData.responders || []);
+      setLastUpdate(new Date());
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -54,6 +86,7 @@ export default function AdminPanel() {
   };
 
   const dispatchResponder = async (incidentId: string) => {
+    setActionLoading({...actionLoading, [incidentId]: true});
     try {
       const response = await fetch('/api/incidents', {
         method: 'POST',
@@ -63,17 +96,51 @@ export default function AdminPanel() {
 
       const result = await response.json();
       if (result.success) {
-        alert(`🚒 ${result.message}`);
+        console.log(`✅ ${result.message}`);
         fetchAllData(); // Refresh data
       } else {
-        alert(`Error: ${result.error}`);
+        console.error(`Error: ${result.error}`);
       }
     } catch (error) {
       console.error('Error dispatching responder:', error);
+    } finally {
+      const newActionLoading = {...actionLoading};
+      delete newActionLoading[incidentId];
+      setActionLoading(newActionLoading);
+    }
+  };
+
+  const markAsFalseAlarm = async (incidentId: string) => {
+    setActionLoading({...actionLoading, [incidentId]: true});
+    try {
+      const response = await fetch('/api/incidents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'update_status', 
+          incidentId, 
+          status: 'false_alarm' 
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        console.log(`✅ Incident ${incidentId} marked as false alarm`);
+        fetchAllData();
+      } else {
+        console.error(`Error: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error marking false alarm:', error);
+    } finally {
+      const newActionLoading = {...actionLoading};
+      delete newActionLoading[incidentId];
+      setActionLoading(newActionLoading);
     }
   };
 
   const markAsEngaged = async (incidentId: string) => {
+    setActionLoading({...actionLoading, [incidentId]: true});
     try {
       const response = await fetch('/api/incidents', {
         method: 'POST',
@@ -83,17 +150,22 @@ export default function AdminPanel() {
 
       const result = await response.json();
       if (result.success) {
-        alert(`🎯 ${result.message}`);
+        console.log(`🎯 ${result.message}`);
         fetchAllData();
       } else {
-        alert(`Error: ${result.error}`);
+        console.error(`Error: ${result.error}`);
       }
     } catch (error) {
       console.error('Error marking as engaged:', error);
+    } finally {
+      const newActionLoading = {...actionLoading};
+      delete newActionLoading[incidentId];
+      setActionLoading(newActionLoading);
     }
   };
 
   const markAsResolved = async (incidentId: string) => {
+    setActionLoading({...actionLoading, [incidentId]: true});
     try {
       const response = await fetch('/api/incidents', {
         method: 'POST',
@@ -103,13 +175,58 @@ export default function AdminPanel() {
 
       const result = await response.json();
       if (result.success) {
-        alert(`✅ ${result.message}`);
+        console.log(`✅ ${result.message}`);
         fetchAllData();
       } else {
-        alert(`Error: ${result.error}`);
+        console.error(`Error: ${result.error}`);
       }
     } catch (error) {
       console.error('Error marking as resolved:', error);
+    } finally {
+      const newActionLoading = {...actionLoading};
+      delete newActionLoading[incidentId];
+      setActionLoading(newActionLoading);
+    }
+  };
+
+  const callExtraUnits = async (incidentId: string) => {
+    setActionLoading({...actionLoading, [incidentId]: true});
+    try {
+      // First, find an available responder
+      const responderResponse = await fetch('/api/responders?available=true');
+      const responderData = await responderResponse.json();
+      
+      if (responderData.responders && responderData.responders.length > 0) {
+        const availableResponder = responderData.responders[0];
+        
+        // Dispatch the additional unit
+        const response = await fetch('/api/incidents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            action: 'dispatch', 
+            incidentId, 
+            responderId: availableResponder.id 
+          })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          console.log(`🚒 Additional unit dispatched: ${result.message}`);
+          fetchAllData();
+        } else {
+          console.error(`Error: ${result.error}`);
+        }
+      } else {
+        alert('⚠️ No additional units available for dispatch');
+      }
+    } catch (error) {
+      console.error('Error calling extra units:', error);
+      alert('Error calling extra units. Please try again.');
+    } finally {
+      const newActionLoading = {...actionLoading};
+      delete newActionLoading[incidentId];
+      setActionLoading(newActionLoading);
     }
   };
 
@@ -117,17 +234,47 @@ export default function AdminPanel() {
     return <div className="p-6">Loading admin panel...</div>;
   }
 
-  const pendingIncidents = incidents.filter(i => i.status === 'pending');
+  const pendingIncidents = incidents.filter(i => i.status === 'pending_admin');
   const dispatchedIncidents = incidents.filter(i => i.status === 'dispatched');
   const engagedIncidents = incidents.filter(i => i.status === 'engaged');
+  const falseAlarmIncidents = incidents.filter(i => i.status === 'false_alarm');
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center gap-3 mb-6">
-        <Activity className="h-8 w-8 text-blue-600" />
-        <div>
-          <h1 className="text-3xl font-bold">Admin Control Panel</h1>
-          <p className="text-gray-600">Manage AI detection, incidents, and emergency response</p>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <Activity className="h-8 w-8 text-blue-600" />
+          <div>
+            <h1 className="text-3xl font-bold">🚨 Admin Control Panel</h1>
+            <p className="text-gray-600">Emergency response command center for fire safety incidents</p>
+          </div>
+        </div>
+
+        {/* Auto-refresh Controls */}
+        <div className="flex items-center space-x-2 bg-white dark:bg-gray-800 px-3 py-2 rounded-lg border">
+          <RefreshCw className={`h-4 w-4 ${autoRefresh ? 'animate-spin' : ''}`} />
+          <span className="text-sm font-medium">Auto-refresh:</span>
+          <Button
+            size="sm"
+            variant={autoRefresh ? 'default' : 'outline'}
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            className="h-6 px-2 text-xs"
+          >
+            {autoRefresh ? 'ON' : 'OFF'}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={fetchAllData}
+            className="h-6 px-2 text-xs"
+          >
+            Refresh Now
+          </Button>
+          {lastUpdate && (
+            <span className="text-xs text-gray-500">
+              {lastUpdate.toLocaleTimeString()}
+            </span>
+          )}
         </div>
       </div>
 
@@ -202,14 +349,48 @@ export default function AdminPanel() {
                     {new Date(incident.timestamp).toLocaleTimeString()}
                   </span>
                 </div>
+                {incident.imageUrl && (
+                  <div className="mb-2">
+                    <img 
+                      src={incident.imageUrl} 
+                      alt="Incident snapshot" 
+                      className="w-full h-20 object-cover rounded"
+                    />
+                  </div>
+                )}
                 <p className="text-sm mb-2">{incident.address}</p>
-                <Button 
-                  size="sm" 
-                  onClick={() => dispatchResponder(incident.id)}
-                  className="w-full"
-                >
-                  Dispatch Unit
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    size="sm" 
+                    onClick={() => dispatchResponder(incident.id)}
+                    className="flex-1"
+                    disabled={actionLoading[incident.id]}
+                  >
+                    {actionLoading[incident.id] ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin mr-1" />
+                        Dispatching...
+                      </>
+                    ) : (
+                      <>
+                        <Truck className="h-4 w-4 mr-1" />
+                        Dispatch Unit
+                      </>
+                    )}
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => markAsFalseAlarm(incident.id)}
+                    disabled={actionLoading[incident.id]}
+                  >
+                    {actionLoading[incident.id] ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <XCircle className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
             ))}
             {pendingIncidents.length === 0 && (
@@ -235,14 +416,34 @@ export default function AdminPanel() {
                     Dispatched {new Date(incident.dispatchedAt || incident.timestamp).toLocaleTimeString()}
                   </span>
                 </div>
+                {incident.imageUrl && (
+                  <div className="mb-2">
+                    <img 
+                      src={incident.imageUrl} 
+                      alt="Incident snapshot" 
+                      className="w-full h-20 object-cover rounded"
+                    />
+                  </div>
+                )}
                 <p className="text-sm mb-2">{incident.address}</p>
                 <Button 
                   size="sm" 
                   variant="outline"
                   onClick={() => markAsEngaged(incident.id)}
                   className="w-full"
+                  disabled={actionLoading[incident.id]}
                 >
-                  Mark Engaged
+                  {actionLoading[incident.id] ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin mr-1" />
+                      Updating...
+                    </>
+                  ) : (
+                    <>
+                      <Shield className="h-4 w-4 mr-1" />
+                      Mark Engaged
+                    </>
+                  )}
                 </Button>
               </div>
             ))}
@@ -262,22 +463,59 @@ export default function AdminPanel() {
             {engagedIncidents.map((incident) => (
               <div key={incident.id} className="border rounded p-3">
                 <div className="flex justify-between items-start mb-2">
-                  <Badge variant={incident.type === 'fire' ? 'destructive' : 'secondary'}>
-                    {incident.type}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={incident.type === 'fire' ? 'destructive' : 'secondary'}>
+                      {incident.type}
+                    </Badge>
+                    {incident.dispatchedUnits && incident.dispatchedUnits.length > 1 && (
+                      <Badge variant="outline" className="text-xs">
+                        {incident.dispatchedUnits.length} units
+                      </Badge>
+                    )}
+                  </div>
                   <span className="text-xs text-gray-500">
                     On scene {new Date(incident.engagedAt || incident.timestamp).toLocaleTimeString()}
                   </span>
                 </div>
+                {incident.imageUrl && (
+                  <div className="mb-2">
+                    <img 
+                      src={incident.imageUrl} 
+                      alt="Incident snapshot" 
+                      className="w-full h-20 object-cover rounded"
+                    />
+                  </div>
+                )}
                 <p className="text-sm mb-2">{incident.address}</p>
-                <Button 
-                  size="sm" 
-                  variant="outline"
-                  onClick={() => markAsResolved(incident.id)}
-                  className="w-full bg-green-50"
-                >
-                  Mark Resolved
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    size="sm" 
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                    onClick={() => markAsResolved(incident.id)}
+                    disabled={actionLoading[incident.id]}
+                  >
+                    {actionLoading[incident.id] ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin mr-1" />
+                        Processing...
+                      </>
+                    ) : (
+                      'Mark Resolved'
+                    )}
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => callExtraUnits(incident.id)}
+                    disabled={actionLoading[incident.id]}
+                  >
+                    {actionLoading[incident.id] ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Plus className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
             ))}
             {engagedIncidents.length === 0 && (

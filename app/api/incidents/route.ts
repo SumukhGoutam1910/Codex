@@ -71,8 +71,8 @@ export async function POST(request: NextRequest) {
           if (responderId) {
             responder = await respondersCol.findOne({ id: responderId });
           } else {
-            // Mock responder for file storage fallback
-            responder = { id: 'responder_1', unit: 'Fire Unit 1', available: true };
+            // Find first available responder
+            responder = await respondersCol.findOne({ available: true });
           }
           if (!responder) {
             return NextResponse.json({ error: 'No available responders found' }, { status: 400 });
@@ -80,17 +80,38 @@ export async function POST(request: NextRequest) {
           if (!responder.available) {
             return NextResponse.json({ error: 'Selected responder is not available' }, { status: 400 });
           }
+
+          // Update incident with dispatched responder info
+          const updateData: any = {
+            status: incident.status === 'pending_admin' ? 'dispatched' : incident.status,
+            dispatchedAt: new Date().toISOString()
+          };
+          
+          // Handle multiple responders - add to array or create array
+          if (incident.dispatchedUnits) {
+            updateData.dispatchedUnits = [...incident.dispatchedUnits, responder.id];
+          } else {
+            updateData.dispatchedUnits = [responder.id];
+            updateData.dispatchedTo = responder.id; // Keep for backward compatibility
+          }
+
           await incidentsCol.updateOne(
             { id: incidentId },
-            { $set: { status: 'dispatched', dispatchedTo: responder.id, dispatchedAt: new Date().toISOString() } }
+            { $set: updateData }
           );
-          if (respondersCol) {
-            await respondersCol.updateOne(
-              { id: responder.id },
-              { $set: { available: false, status: 'responding', currentIncident: incidentId } }
-            );
-          }
-          return NextResponse.json({ success: true, message: `Unit ${responder.unit || responder.id} dispatched to incident` });
+
+          // Mark responder as unavailable
+          await respondersCol.updateOne(
+            { id: responder.id },
+            { $set: { available: false, status: 'responding', currentIncident: incidentId } }
+          );
+
+          const unitCount = updateData.dispatchedUnits.length;
+          const message = unitCount > 1 
+            ? `Additional unit ${responder.unit || responder.id} dispatched (${unitCount} units total)`
+            : `Unit ${responder.unit || responder.id} dispatched to incident`;
+
+          return NextResponse.json({ success: true, message });
         }
         case 'update_status': {
           await incidentsCol.updateOne(
@@ -98,6 +119,30 @@ export async function POST(request: NextRequest) {
             { $set: { status: status, updatedAt: new Date().toISOString() } }
           );
           return NextResponse.json({ success: true, message: `Incident status updated to ${status}` });
+        }
+        case 'engage': {
+          await incidentsCol.updateOne(
+            { id: incidentId },
+            { $set: { status: 'engaged', engagedAt: new Date().toISOString() } }
+          );
+          return NextResponse.json({ success: true, message: 'Unit marked as engaged at scene' });
+        }
+        case 'resolve': {
+          await incidentsCol.updateOne(
+            { id: incidentId },
+            { $set: { status: 'resolved', resolvedAt: new Date().toISOString() } }
+          );
+          
+          // Mark all assigned responders as available again
+          const responderIds = incident.dispatchedUnits || [incident.dispatchedTo].filter(Boolean);
+          if (responderIds.length > 0) {
+            await respondersCol.updateMany(
+              { id: { $in: responderIds } },
+              { $set: { available: true, status: 'available', currentIncident: null } }
+            );
+          }
+          
+          return NextResponse.json({ success: true, message: 'Incident resolved successfully' });
         }
         default:
           return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
@@ -129,6 +174,18 @@ export async function POST(request: NextRequest) {
             incidents[incidentIndex].updatedAt = new Date().toISOString();
             await fs.writeFile(incidentsFile, JSON.stringify(incidents, null, 2));
             return NextResponse.json({ success: true, message: `Incident status updated to ${status}` });
+          }
+          case 'engage': {
+            incidents[incidentIndex].status = 'engaged';
+            incidents[incidentIndex].engagedAt = new Date().toISOString();
+            await fs.writeFile(incidentsFile, JSON.stringify(incidents, null, 2));
+            return NextResponse.json({ success: true, message: 'Unit marked as engaged at scene' });
+          }
+          case 'resolve': {
+            incidents[incidentIndex].status = 'resolved';
+            incidents[incidentIndex].resolvedAt = new Date().toISOString();
+            await fs.writeFile(incidentsFile, JSON.stringify(incidents, null, 2));
+            return NextResponse.json({ success: true, message: 'Incident resolved successfully' });
           }
           default:
             return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
