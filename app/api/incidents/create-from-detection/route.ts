@@ -2,34 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Incident } from '@/lib/types';
 import { promises as fs } from 'fs';
 import path from 'path';
-
-// In a real application, you would use a proper database
-// For this demo, we'll use file-based storage
-const INCIDENTS_FILE = path.join(process.cwd(), 'data', 'incidents.json');
-
-async function ensureDataDirectory() {
-  const dataDir = path.join(process.cwd(), 'data');
-  try {
-    await fs.access(dataDir);
-  } catch {
-    await fs.mkdir(dataDir, { recursive: true });
-  }
-}
-
-async function loadIncidents(): Promise<Incident[]> {
-  await ensureDataDirectory();
-  try {
-    const data = await fs.readFile(INCIDENTS_FILE, 'utf-8');
-    return JSON.parse(data);
-  } catch {
-    return [];
-  }
-}
-
-async function saveIncidents(incidents: Incident[]): Promise<void> {
-  await ensureDataDirectory();
-  await fs.writeFile(INCIDENTS_FILE, JSON.stringify(incidents, null, 2));
-}
+import clientPromise from '@/lib/mongodb';
 
 async function saveIncidentImage(imageBase64: string, filename: string): Promise<string> {
   try {
@@ -85,12 +58,10 @@ export async function POST(request: NextRequest) {
       imageUrl = await saveIncidentImage(image, `detection_${cameraId}_${Date.now()}`);
     }
 
-    // Load existing incidents
-    const incidents = await loadIncidents();
-
     // Create new incident
+    const incidentId = `inc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const newIncident: Incident = {
-      id: `inc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: incidentId,
       type: detectionType.toLowerCase() as 'fire' | 'smoke',
       address: location || 'Unknown Location',
       nearestStation: 'Station 1', // You could implement logic to find nearest station
@@ -119,11 +90,48 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    // Add to incidents list
-    incidents.push(newIncident);
+    // Save incident to MongoDB
+    let dbSuccess = false;
+    try {
+      const client = await clientPromise;
+      const db = client.db('codex');
+      const incidents = db.collection('incidents');
+      
+      await incidents.insertOne({
+        ...newIncident,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
 
-    // Save updated incidents
-    await saveIncidents(incidents);
+      console.log(`🚨 NEW INCIDENT CREATED IN DATABASE: ${newIncident.id}`);
+      dbSuccess = true;
+    } catch (dbError) {
+      console.error('❌ Database connection failed, using fallback storage:', dbError);
+      
+      // Fallback to file storage if MongoDB fails
+      try {
+        const dataDir = path.join(process.cwd(), 'data');
+        await fs.mkdir(dataDir, { recursive: true });
+        
+        const incidentsFile = path.join(dataDir, 'incidents.json');
+        let existingIncidents = [];
+        
+        try {
+          const data = await fs.readFile(incidentsFile, 'utf-8');
+          existingIncidents = JSON.parse(data);
+        } catch {
+          // File doesn't exist, create new array
+        }
+        
+        existingIncidents.push(newIncident);
+        await fs.writeFile(incidentsFile, JSON.stringify(existingIncidents, null, 2));
+        
+        console.log(`📁 Incident saved to file storage: ${newIncident.id}`);
+        dbSuccess = true;
+      } catch (fileError) {
+        console.error('❌ File storage also failed:', fileError);
+      }
+    }
 
     console.log(`🚨 NEW INCIDENT CREATED: ${newIncident.id}`);
     console.log(`📍 Location: ${location}`);
@@ -139,7 +147,8 @@ export async function POST(request: NextRequest) {
       incidentId: newIncident.id,
       message: `${detectionType} incident reported successfully`,
       imageUrl: imageUrl,
-      adminNotified: true
+      adminNotified: true,
+      storedInDatabase: dbSuccess
     });
 
   } catch (error) {

@@ -16,6 +16,7 @@ export default function DashboardPage() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [backgroundMonitorStatus, setBackgroundMonitorStatus] = useState<{
     isActive: boolean;
     lastCheck: Date | null;
@@ -129,11 +130,42 @@ export default function DashboardPage() {
         }
       } catch (error) {
         console.error('Error during auto-refresh:', error);
+        // Try to maintain existing data if fetch fails
       }
-    }, 3000); // Refresh every 3 seconds
+    }, 2000); // Refresh every 2 seconds for faster incident detection
 
     return () => clearInterval(interval);
   }, [autoRefresh, user]);
+
+  const manualRefresh = async () => {
+    setIsManualRefreshing(true);
+    try {
+      const [camerasRes, incidentsRes] = await Promise.all([
+        fetch('/api/cameras'),
+        fetch('/api/incidents')
+      ]);
+
+      const camerasData = await camerasRes.json();
+      const incidentsData = await incidentsRes.json();
+
+      // Ensure we have valid arrays before processing
+      const validCameras = Array.isArray(camerasData) ? camerasData : [];
+      const validIncidents = Array.isArray(incidentsData) ? incidentsData : [];
+
+      if (user?.role === 'user') {
+        setCameras(validCameras.filter((c: Camera) => c.userId === user.id));
+        setIncidents(validIncidents.filter((i: Incident) => i.userId === user.id));
+      } else {
+        setCameras(validCameras);
+        setIncidents(validIncidents);
+      }
+      setLastUpdate(new Date());
+    } catch (error) {
+      console.error('Error during manual refresh:', error);
+    } finally {
+      setIsManualRefreshing(false);
+    }
+  };
 
   const simulateDetection = async (cameraId: string) => {
     try {
@@ -260,6 +292,15 @@ export default function DashboardPage() {
                   className="h-6 px-2 text-xs"
                 >
                   {autoRefresh ? 'ON' : 'OFF'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={manualRefresh}
+                  disabled={isManualRefreshing}
+                  className="h-6 px-2 text-xs"
+                >
+                  {isManualRefreshing ? 'Refreshing...' : 'Refresh Now'}
                 </Button>
                 {lastUpdate && (
                   <span className="text-xs text-gray-500">

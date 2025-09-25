@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Incident } from '@/lib/types';
-import { AlertTriangle, MapPin, Clock, Camera as CameraIcon, User, CheckCircle, XCircle, Phone } from 'lucide-react';
+import { AlertTriangle, MapPin, Clock, Camera as CameraIcon, User, CheckCircle, XCircle, Phone, RefreshCw, Shield, Truck } from 'lucide-react';
 
 export default function IncidentsPage() {
   const { user, isLoading } = useAuth();
@@ -15,6 +15,8 @@ export default function IncidentsPage() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [filter, setFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -27,13 +29,18 @@ export default function IncidentsPage() {
         const response = await fetch('/api/incidents');
         const data = await response.json();
         
+        // Ensure we have valid array before processing
+        const validIncidents = Array.isArray(data) ? data : [];
+        
         if (user?.role === 'user') {
-          setIncidents(data.filter((i: Incident) => i.userId === user.id));
+          setIncidents(validIncidents.filter((i: Incident) => i.userId === user.id));
         } else {
-          setIncidents(data);
+          setIncidents(validIncidents);
         }
+        setLastUpdate(new Date());
       } catch (error) {
         console.error('Error fetching incidents:', error);
+        // Keep existing incidents if fetch fails
       } finally {
         setLoading(false);
       }
@@ -43,6 +50,31 @@ export default function IncidentsPage() {
       fetchIncidents();
     }
   }, [user, isLoading, router]);
+
+  // Auto-refresh effect for real-time updates
+  useEffect(() => {
+    if (!autoRefresh || !user) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch('/api/incidents');
+        const data = await response.json();
+        
+        const validIncidents = Array.isArray(data) ? data : [];
+        
+        if (user?.role === 'user') {
+          setIncidents(validIncidents.filter((i: Incident) => i.userId === user.id));
+        } else {
+          setIncidents(validIncidents);
+        }
+        setLastUpdate(new Date());
+      } catch (error) {
+        console.error('Error during auto-refresh:', error);
+      }
+    }, 2000); // Refresh every 2 seconds
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, user]);
 
   if (isLoading || loading) {
     return (
@@ -82,25 +114,104 @@ export default function IncidentsPage() {
     return true;
   });
 
-  const handleResponderAction = (incidentId: string, action: string) => {
-    // Mock responder actions
-    console.log(`Responder action: ${action} for incident ${incidentId}`);
-    // In a real app, this would update the incident status via API
+  const handleResponderAction = async (incidentId: string, action: string) => {
+    try {
+      const response = await fetch('/api/incidents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, incidentId })
+      });
+
+      if (response.ok) {
+        // Refresh incidents to show updated status
+        const incidentsResponse = await fetch('/api/incidents');
+        const data = await incidentsResponse.json();
+        const validIncidents = Array.isArray(data) ? data : [];
+        
+        if (user?.role === 'user') {
+          setIncidents(validIncidents.filter((i: Incident) => i.userId === user.id));
+        } else {
+          setIncidents(validIncidents);
+        }
+        
+        console.log(`✅ ${action} action completed for incident ${incidentId}`);
+      }
+    } catch (error) {
+      console.error('Error performing action:', error);
+    }
+  };
+
+  const handleDispatchUnit = async (incidentId: string) => {
+    await handleResponderAction(incidentId, 'dispatch');
+  };
+
+  const handleMarkFalseAlarm = async (incidentId: string) => {
+    try {
+      const response = await fetch('/api/incidents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'update_status', 
+          incidentId, 
+          status: 'false_alarm' 
+        })
+      });
+
+      if (response.ok) {
+        // Refresh incidents
+        const incidentsResponse = await fetch('/api/incidents');
+        const data = await incidentsResponse.json();
+        const validIncidents = Array.isArray(data) ? data : [];
+        
+        if (user?.role === 'user') {
+          setIncidents(validIncidents.filter((i: Incident) => i.userId === user.id));
+        } else {
+          setIncidents(validIncidents);
+        }
+        
+        console.log(`✅ Incident ${incidentId} marked as false alarm`);
+      }
+    } catch (error) {
+      console.error('Error marking false alarm:', error);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            {user.role === 'responder' ? 'Active Incidents' : 'Incident Management'}
-          </h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">
-            {user.role === 'responder' 
-              ? 'Emergency response dashboard for active incidents'
-              : 'Monitor and manage fire safety incidents'
-            }
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                {user.role === 'responder' ? 'Active Incidents' : 'Incident Management'}
+              </h1>
+              <p className="mt-2 text-gray-600 dark:text-gray-400">
+                {user.role === 'responder' 
+                  ? 'Emergency response dashboard for active incidents'
+                  : 'Monitor and manage fire safety incidents'
+                }
+              </p>
+            </div>
+            
+            {/* Auto-refresh Controls */}
+            <div className="flex items-center space-x-2 bg-white dark:bg-gray-800 px-3 py-2 rounded-lg border">
+              <RefreshCw className={`h-4 w-4 ${autoRefresh ? 'animate-spin' : ''}`} />
+              <span className="text-sm font-medium">Auto-refresh:</span>
+              <Button
+                size="sm"
+                variant={autoRefresh ? 'default' : 'outline'}
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                className="h-6 px-2 text-xs"
+              >
+                {autoRefresh ? 'ON' : 'OFF'}
+              </Button>
+              {lastUpdate && (
+                <span className="text-xs text-gray-500">
+                  {lastUpdate.toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Filters */}
@@ -174,10 +285,22 @@ export default function IncidentsPage() {
 
                   {/* Snapshot Preview */}
                   <div className="flex justify-center">
-                    <div className="w-32 h-24 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center">
-                      <CameraIcon className="h-8 w-8 text-gray-400" />
-                      <span className="sr-only">Incident snapshot</span>
-                    </div>
+                    {incident.snapshot ? (
+                      <img
+                        src={incident.snapshot}
+                        alt="Incident snapshot"
+                        className="w-32 h-24 object-cover rounded-lg border"
+                        onError={(e) => {
+                          // Fallback to placeholder if image fails to load
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div className="w-32 h-24 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center">
+                        <CameraIcon className="h-8 w-8 text-gray-400" />
+                        <span className="sr-only">No snapshot available</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions */}
@@ -223,14 +346,19 @@ export default function IncidentsPage() {
                         <div className="flex flex-col space-y-2">
                           <Button 
                             size="sm"
+                            onClick={() => handleDispatchUnit(incident.id)}
                             className="bg-red-600 hover:bg-red-700"
                           >
+                            <Truck className="h-4 w-4 mr-2" />
                             Dispatch Unit
                           </Button>
                           <Button 
                             size="sm" 
                             variant="outline"
+                            onClick={() => handleMarkFalseAlarm(incident.id)}
+                            className="text-yellow-600 border-yellow-600 hover:bg-yellow-50"
                           >
+                            <XCircle className="h-4 w-4 mr-2" />
                             Mark False Alarm
                           </Button>
                         </div>
