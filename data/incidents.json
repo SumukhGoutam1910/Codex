@@ -29,5 +29,129 @@
         "smoke": 0
       }
     }
+  },
+  {
+    "id": "inc_1758773170170_o7kmo7gkv",
+    "type": "fire",
+    "address": "Pune , Vit",
+    "nearestStation": "Station 1",
+    "snapshot": "/incident-snapshots/incident-2025-09-25T04-06-10-166Z.jpg",
+    "timestamp": "2025-09-25T04:06:09.931Z",
+    "status": "pending_admin",
+    "priority": "high",
+    "description": "Automated detection: fire detected with 99% confidence",
+    "userId": "admin",
+    "cameraId": "68d414d99289b676102cd655",
+    "confidence": 0.9899347424507141,
+    "detectionMethod": "AI",
+    "aiMetadata": {
+      "modelVersion": "YOLOv8-FireSmoke-v1.0",
+      "processingTime": 0,
+      "boundingBoxes": [
+        {
+          "x": 48,
+          "y": 972,
+          "width": 1440,
+          "height": 96
+        }
+      ],
+      "classificationScores": {
+        "fire": 0.9899347424507141,
+        "smoke": 0
+      }
+    }
+  },
+  {
+    "id": "inc_1758773181583_1c1d6mwrz",
+    "type": "fire",
+    "address": "asd",
+    "nearestStation": "Station 1",
+    "snapshot": "/incident-snapshots/incident-2025-09-25T04-06-21-579Z.jpg",
+    "timestamp": "2025-09-25T04:06:21.534Z",
+    "status": "pending_admin",
+    "priority": "high",
+    "description": "Automated detection: fire detected with 98% confidence",
+    "userId": "admin",
+    "cameraId": "68d4bd239c143d494fdd8f10",
+    "confidence": 0.9849120378494263,
+    "detectionMethod": "AI",
+    "aiMetadata": {
+      "modelVersion": "YOLOv8-FireSmoke-v1.0",
+      "processingTime": 0,
+      "boundingBoxes": [
+        {
+          "x": 0,
+          "y": 972,
+          "width": 912,
+          "height": 96.0001220703125
+        }
+      ],
+      "classificationScores": {
+        "fire": 0.9849120378494263,
+        "smoke": 0
+      }
+    }
+  },
+  {
+    "id": "inc_1758776933575_z8gnk961x",
+    "type": "fire",
+    "address": "Pune , Vit",
+    "nearestStation": "Station 1",
+    "snapshot": "/incident-snapshots/incident-2025-09-25T05-08-53-568Z.jpg",
+    "timestamp": "2025-09-25T05:08:53.174Z",
+    "status": "pending_admin",
+    "priority": "high",
+    "description": "Automated detection: fire detected with 99% confidence",
+    "userId": "admin",
+    "cameraId": "68d414d99289b676102cd655",
+    "confidence": 0.9919164776802063,
+    "detectionMethod": "AI",
+    "aiMetadata": {
+      "modelVersion": "YOLOv8-FireSmoke-v1.0",
+      "processingTime": 0,
+      "boundingBoxes": [
+        {
+          "x": 0,
+          "y": 972,
+          "width": 912,
+          "height": 96
+        }
+      ],
+      "classificationScores": {
+        "fire": 0.9919164776802063,
+        "smoke": 0
+      }
+    }
+  },
+  {
+    "id": "inc_1758776951448_d7vkqlgrs",
+    "type": "fire",
+    "address": "asd",
+    "nearestStation": "Station 1",
+    "snapshot": "/incident-snapshots/incident-2025-09-25T05-09-11-446Z.jpg",
+    "timestamp": "2025-09-25T05:09:11.423Z",
+    "status": "pending_admin",
+    "priority": "high",
+    "description": "Automated detection: fire detected with 98% confidence",
+    "userId": "admin",
+    "cameraId": "68d4bd239c143d494fdd8f10",
+    "confidence": 0.9830849766731262,
+    "detectionMethod": "AI",
+    "aiMetadata": {
+      "modelVersion": "YOLOv8-FireSmoke-v1.0",
+      "processingTime": 0,
+      "boundingBoxes": [
+        {
+          "x": 0,
+          "y": 972,
+          "width": 912,
+          "height": 96.0001220703125
+        }
+      ],
+      "classificationScores": {
+        "fire": 0.9830849766731262,
+        "smoke": 0
+      }
+    }
   }
 ]

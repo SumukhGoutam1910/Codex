@@ -48,14 +48,18 @@ export default function DashboardPage() {
         const camerasData = await camerasRes.json();
         const incidentsData = await incidentsRes.json();
 
+        // Ensure we have valid arrays before processing
+        const validCameras = Array.isArray(camerasData) ? camerasData : [];
+        const validIncidents = Array.isArray(incidentsData) ? incidentsData : [];
+
         if (user?.role === 'user') {
           // Filter data for user
-          setCameras(camerasData.filter((c: Camera) => c.userId === user.id));
-          setIncidents(incidentsData.filter((i: Incident) => i.userId === user.id));
+          setCameras(validCameras.filter((c: Camera) => c.userId === user.id));
+          setIncidents(validIncidents.filter((i: Incident) => i.userId === user.id));
         } else {
           // Admin sees all
-          setCameras(camerasData);
-          setIncidents(incidentsData);
+          setCameras(validCameras);
+          setIncidents(validIncidents);
         }
         setLastUpdate(new Date());
       } catch (error) {
@@ -100,12 +104,16 @@ export default function DashboardPage() {
         const camerasData = await camerasRes.json();
         const incidentsData = await incidentsRes.json();
 
+        // Ensure we have valid arrays before processing
+        const validCameras = Array.isArray(camerasData) ? camerasData : [];
+        const validIncidents = Array.isArray(incidentsData) ? incidentsData : [];
+
         if (user?.role === 'user') {
-          setCameras(camerasData.filter((c: Camera) => c.userId === user.id));
-          setIncidents(incidentsData.filter((i: Incident) => i.userId === user.id));
+          setCameras(validCameras.filter((c: Camera) => c.userId === user.id));
+          setIncidents(validIncidents.filter((i: Incident) => i.userId === user.id));
         } else {
-          setCameras(camerasData);
-          setIncidents(incidentsData);
+          setCameras(validCameras);
+          setIncidents(validIncidents);
         }
         setLastUpdate(new Date());
 
@@ -415,16 +423,16 @@ export default function DashboardPage() {
                       <div>
                         <div className="flex items-center space-x-2">
                           <p className="font-medium">{camera.name}</p>
-                          {camera.aiMonitoring?.enabled && (
+                          {camera.metadata?.aiMonitoring && (
                             <Badge variant="default" className="text-xs">
-                              AI: {camera.aiMonitoring.enabled ? 'ON' : 'OFF'}
+                              AI: ON
                             </Badge>
                           )}
                         </div>
                         <div className="flex items-center space-x-2 text-sm text-gray-500">
                           <span>{camera.location}</span>
-                          {camera.aiMonitoring?.lastCheck && (
-                            <span>• AI: {new Date(camera.aiMonitoring.lastCheck).toLocaleTimeString()}</span>
+                          {camera.metadata?.lastDetection?.timestamp && (
+                            <span>• AI: {new Date(camera.metadata.lastDetection.timestamp).toLocaleTimeString()}</span>
                           )}
                         </div>
                       </div>

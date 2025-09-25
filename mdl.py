@@ -11,7 +11,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class FireSmokeDetector:
-    def __init__(self, model_path='best_03.pt', confidence_threshold=0.7, api_base_url='http://localhost:3000'):
+    def __init__(self, model_path='best_01.pt', confidence_threshold=0.5, api_base_url='http://localhost:3000'):
         """
         Initialize the Fire/Smoke Detector
         Args:
@@ -48,56 +48,95 @@ class FireSmokeDetector:
     def monitor_camera(self, stream_url, camera_id, camera_name, location):
         print(f"🎥 Starting monitoring for camera: {camera_name} ({location})")
         print(f"🔗 Stream URL: {stream_url}")
+        
+        # Try to open the video stream
+        print(f"🔌 Attempting to connect to stream...")
         cap = cv2.VideoCapture(stream_url)
+        
+        # Set additional properties for network streams
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        cap.set(cv2.CAP_PROP_FPS, 10)  # Limit FPS for network streams
+        
         if not cap.isOpened():
             print(f"❌ Error: Could not open stream for camera {camera_name}")
-            return False
+            print(f"🔄 Trying alternative stream formats...")
+            
+            # Try different stream formats
+            alternative_urls = [
+                stream_url,
+                stream_url.replace('/video', ''),
+                f"{stream_url.replace('/video', '')}/video",
+                f"{stream_url.replace('/video', '')}/stream"
+            ]
+            
+            for alt_url in alternative_urls:
+                print(f"🔄 Trying: {alt_url}")
+                cap = cv2.VideoCapture(alt_url)
+                if cap.isOpened():
+                    print(f"✅ Connected to: {alt_url}")
+                    stream_url = alt_url
+                    break
+                cap.release()
+            
+            if not cap.isOpened():
+                print(f"❌ Failed to connect to any stream format")
+                return False
+        
+        print(f"✅ Successfully connected to stream: {stream_url}")
         
         frame_count = 0
         detection_count = 0
         last_log_time = time.time()
+        consecutive_failures = 0
         
         try:
             while True:
                 ret, frame = cap.read()
                 if not ret:
-                    print(f"❌ Error: Could not read frame from camera {camera_name}")
-                    break
+                    consecutive_failures += 1
+                    print(f"❌ Failed to read frame {frame_count + 1}, consecutive failures: {consecutive_failures}")
+                    if consecutive_failures > 10:
+                        print(f"❌ Too many consecutive failures, stopping...")
+                        break
+                    time.sleep(1)
+                    continue
                 
+                consecutive_failures = 0  # Reset failure counter
                 frame_count += 1
                 current_time = time.time()
                 
                 # Process frame for detection
-                results = self.model(frame)
-                max_confidence = 0
-                detected_objects = []
-                
-                for r in results:
-                    for box in r.boxes:
-                        conf = float(box.conf)
-                        label = self.model.names[int(box.cls)]
-                        max_confidence = max(max_confidence, conf)
-                        detected_objects.append(f"{label}({conf:.2f})")
-                
-                # Log every second
-                if current_time - last_log_time >= 1.0:
-                    objects_str = ", ".join(detected_objects) if detected_objects else "none"
-                    print(f"[FRAME {frame_count}] Max Confidence: {max_confidence:.3f} | Objects: {objects_str}")
-                    last_log_time = current_time
-                
-                # Check for high-confidence fire/smoke detection
-                for r in results:
-                    for box in r.boxes:
-                        conf = float(box.conf)
-                        label = self.model.names[int(box.cls)]
-                        if label.lower() in ['fire', 'smoke'] and conf >= self.alert_threshold:
-                            detected_this_frame = True
-                            snapshot_path = f"snapshots/alert_{int(time.time())}.jpg"
-                            cv2.imwrite(snapshot_path, frame)
-                            print(f"🚨 [ALERT] {label} detected! Confidence: {conf:.3f} | Sending to API")
-                            self.send_incident_to_api(snapshot_path, label, conf)
-                            detection_count += 1
+                try:
+                    results = self.model(frame)
+                    max_confidence = 0
+                    detected_objects = []
+                    fire_smoke_detected = False
+                    
+                    for r in results:
+                        for box in r.boxes:
+                            conf = float(box.conf)
+                            label = self.model.names[int(box.cls)]
+                            max_confidence = max(max_confidence, conf)
+                            detected_objects.append(f"{label}({conf:.2f})")
+                            
+                            # Check for fire/smoke with your working threshold
+                            if label.lower() in ['fire', 'smoke'] and conf >= 0.5:  # Use working threshold
+                                fire_smoke_detected = True
+                                snapshot_path = f"snapshots/alert_{camera_id}_{int(time.time())}.jpg"
+                                cv2.imwrite(snapshot_path, frame)
+                                print(f"🚨 [FIRE DETECTED!] {label} confidence: {conf:.3f} | Sending alert!")
+                                self.send_incident_to_api(snapshot_path, label, conf)
+                                detection_count += 1
+                    
+                    # Log every second
+                    if current_time - last_log_time >= 1.0:
+                        objects_str = ", ".join(detected_objects) if detected_objects else "none"
+                        status = "🔥 FIRE!" if fire_smoke_detected else "📹"
+                        print(f"{status} [FRAME {frame_count}] Max: {max_confidence:.3f} | Objects: {objects_str}")
+                        last_log_time = current_time
+                        
+                except Exception as detection_error:
+                    print(f"❌ Detection error on frame {frame_count}: {detection_error}")
                 
                 # Small delay
                 time.sleep(0.1)
@@ -106,10 +145,12 @@ class FireSmokeDetector:
             print(f"\n🛑 Monitoring stopped for camera: {camera_name}")
         except Exception as e:
             print(f"❌ Error monitoring camera {camera_name}: {e}")
+            import traceback
+            traceback.print_exc()
         finally:
             cap.release()
             cv2.destroyAllWindows()
-            print(f"📊 Monitoring complete - Processed {frame_count} frames, {detection_count} alerts sent")
+            print(f"📊 Monitoring complete - Processed {frame_count} frames, {detection_count} fire alerts sent")
         
         return True
 
