@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
+import { spawn, ChildProcess } from 'child_process';
+import path from 'path';
 
 // Background camera status monitoring service
 class CameraStatusMonitor {
   private static instance: CameraStatusMonitor;
   private intervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
+  private aiProcesses: Map<string, ChildProcess> = new Map(); // Track AI detection processes
 
   private constructor() {}
 
@@ -17,6 +20,7 @@ class CameraStatusMonitor {
   }
 
   public async start() {
+    console.log('🚨 Background monitor start() method called');
     if (this.isRunning) {
       console.log('📊 Camera status monitor already running');
       return;
@@ -26,6 +30,7 @@ class CameraStatusMonitor {
     this.isRunning = true;
 
     // Run immediately on start
+    console.log('🏁 Running initial camera status check...');
     await this.checkAllCameraStatuses();
 
     // Then run every 3 seconds
@@ -41,6 +46,10 @@ class CameraStatusMonitor {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
+    
+    // Stop all AI detection processes
+    this.stopAllAIProcesses();
+    
     this.isRunning = false;
     console.log('⏹️ Background camera status monitor stopped');
   }
@@ -48,16 +57,94 @@ class CameraStatusMonitor {
   public getStatus() {
     return {
       running: this.isRunning,
-      intervalId: !!this.intervalId
+      intervalId: !!this.intervalId,
+      aiProcessesRunning: this.aiProcesses.size,
+      monitoredCameras: Array.from(this.aiProcesses.keys())
     };
   }
 
+  private stopAllAIProcesses() {
+    console.log(`🤖 Stopping ${this.aiProcesses.size} AI detection processes...`);
+    this.aiProcesses.forEach((process, cameraId) => {
+      try {
+        process.kill('SIGTERM');
+        console.log(`🛑 Stopped AI process for camera: ${cameraId}`);
+      } catch (error) {
+        console.error(`❌ Error stopping AI process for camera ${cameraId}:`, error);
+      }
+    });
+    this.aiProcesses.clear();
+  }
+
+  private async startAIDetection(camera: any) {
+    if (this.aiProcesses.has(camera._id.toString())) {
+      console.log(`🔄 AI detection already running for camera: ${camera.name}`);
+      return; // Already running
+    }
+
+    try {
+      console.log(`🤖 Starting AI detection for camera: ${camera.name}`);
+      
+      // Path to the Python AI detection script
+      const pythonScript = path.join(process.cwd(), 'mdl.py');
+      const pythonExecutable = path.join(process.cwd(), 'env', 'Scripts', 'python.exe');
+      
+      console.log(`🐍 Python executable: ${pythonExecutable}`);
+      console.log(`📜 Script path: ${pythonScript}`);
+      console.log(`📹 Stream URL: ${camera.streamUrl}`);
+      
+      // Spawn Python process for AI detection using virtual environment
+      const streamUrl = camera.streamUrl.endsWith('/video') ? camera.streamUrl : `${camera.streamUrl}/video`;
+      
+      const aiProcess = spawn(pythonExecutable, [
+        pythonScript,
+        camera._id.toString(), // camera_id
+        streamUrl, // stream_url with /video endpoint
+        camera.name, // camera_name
+        camera.location || 'Unknown Location' // location
+      ], {
+        cwd: process.cwd(),
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, PYTHONUNBUFFERED: '1' }
+      });
+
+      // Handle process output
+      aiProcess.stdout.on('data', (data) => {
+        console.log(`🤖 AI[${camera.name}]: ${data.toString().trim()}`);
+      });
+
+      aiProcess.stderr.on('data', (data) => {
+        console.error(`❌ AI[${camera.name}] Error: ${data.toString().trim()}`);
+      });
+
+      aiProcess.on('close', (code) => {
+        console.log(`🤖 AI process for ${camera.name} exited with code: ${code}`);
+        this.aiProcesses.delete(camera._id.toString());
+      });
+
+      aiProcess.on('error', (error) => {
+        console.error(`❌ Failed to start AI process for ${camera.name}:`, error);
+        this.aiProcesses.delete(camera._id.toString());
+      });
+
+      // Store the process
+      this.aiProcesses.set(camera._id.toString(), aiProcess);
+      
+      console.log(`✅ AI detection started for camera: ${camera.name}`);
+      
+    } catch (error) {
+      console.error(`❌ Error starting AI detection for camera ${camera.name}:`, error);
+    }
+  }
+
   private async checkAllCameraStatuses() {
+    console.log('�🚨🚨 STARTING CAMERA STATUS CHECK 🚨🚨🚨');
     try {
       const client = await clientPromise;
       const db = client.db();
       const cameras = await db.collection('cameras').find({}).toArray();
 
+      console.log(`📊 Found ${cameras.length} cameras in database`);
       if (cameras.length === 0) {
         console.log('📷 No cameras to monitor');
         return;
@@ -125,6 +212,30 @@ class CameraStatusMonitor {
           { $set: updateData }
         );
 
+        // Manage AI detection processes
+        const cameraId = camera._id.toString();
+        const shouldRunAI = status === 'online'; // Always run AI for online cameras
+        const isAIRunning = this.aiProcesses.has(cameraId);
+
+        console.log(`🔍 Camera ${camera.name}: status=${status}, shouldRunAI=${shouldRunAI}, isAIRunning=${isAIRunning}`);
+
+        if (shouldRunAI && !isAIRunning) {
+          // Start AI detection if camera is online
+          await this.startAIDetection(camera);
+        } else if (!shouldRunAI && isAIRunning) {
+          // Stop AI detection if camera is offline
+          const process = this.aiProcesses.get(cameraId);
+          if (process) {
+            try {
+              process.kill('SIGTERM');
+              console.log(`🛑 Stopped AI process for camera: ${camera.name}`);
+            } catch (error) {
+              console.error(`❌ Error stopping AI process for camera ${camera.name}:`, error);
+            }
+            this.aiProcesses.delete(cameraId);
+          }
+        }
+
         if (status === 'online') {
           onlineCount++;
         } else {
@@ -132,7 +243,7 @@ class CameraStatusMonitor {
         }
       }
 
-      console.log(`📊 Status check complete: ${onlineCount} online, ${offlineCount} offline`);
+      console.log(`📊 Status check complete: ${onlineCount} online, ${offlineCount} offline | AI processes: ${this.aiProcesses.size}`);
       
     } catch (error) {
       console.error('❌ Error in background camera status check:', error);

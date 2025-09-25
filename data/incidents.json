@@ -1,0 +1,33 @@
+[
+  {
+    "id": "inc_1758747707669_ye1v4mf2n",
+    "type": "fire",
+    "address": "Test Location",
+    "nearestStation": "Station 1",
+    "snapshot": "/incident-snapshots/incident-2025-09-24T21-01-47-665Z.jpg",
+    "timestamp": "2025-09-25T12:00:00.000Z",
+    "status": "pending_admin",
+    "priority": "high",
+    "description": "Automated detection: fire detected with 95% confidence",
+    "userId": "admin",
+    "cameraId": "test_cam_001",
+    "confidence": 0.95,
+    "detectionMethod": "AI",
+    "aiMetadata": {
+      "modelVersion": "YOLOv8-FireSmoke-v1.0",
+      "processingTime": 0,
+      "boundingBoxes": [
+        {
+          "x": 100,
+          "y": 100,
+          "width": 200,
+          "height": 150
+        }
+      ],
+      "classificationScores": {
+        "fire": 0.95,
+        "smoke": 0
+      }
+    }
+  }
+]

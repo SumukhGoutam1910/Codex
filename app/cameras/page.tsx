@@ -105,7 +105,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Camera } from '@/lib/types';
-import { Camera as CameraIcon, MapPin, Monitor, Plus, Settings, Eye, EyeOff, Globe, Zap } from 'lucide-react';
+import { Camera as CameraIcon, MapPin, Monitor, Plus, Settings, Eye, EyeOff, Globe, Zap, Bot } from 'lucide-react';
 import IPCameraSetup from '@/components/real-bluetooth-scanner';
 
 export default function CamerasPage() {
@@ -471,6 +471,52 @@ export default function CamerasPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* AI Detection Info */}
+        <Card className="mb-8 border-blue-200 bg-blue-50 dark:bg-blue-950/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
+              <Bot className="h-5 w-5" />
+              🤖 AI Fire & Smoke Detection System
+            </CardTitle>
+            <CardDescription className="text-blue-700 dark:text-blue-300">
+              Advanced AI monitoring with automatic incident reporting
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-blue-900 dark:text-blue-100">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div>
+                <h4 className="font-semibold mb-2">🔥 What it detects:</h4>
+                <ul className="space-y-1">
+                  <li>• Fire (flames and heat signatures)</li>
+                  <li>• Smoke (visible smoke patterns)</li>
+                  <li>• Real-time analysis every frame</li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-semibold mb-2">⚡ How it works:</h4>
+                <ul className="space-y-1">
+                  <li>• Automatic startup with cameras</li>
+                  <li>• 80%+ confidence threshold</li>
+                  <li>• Instant admin notifications</li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-semibold mb-2">📸 When detected:</h4>
+                <ul className="space-y-1">
+                  <li>• Captures incident snapshot</li>
+                  <li>• Creates admin alert</li>
+                  <li>• Records in incident log</li>
+                </ul>
+              </div>
+            </div>
+            <div className="mt-4 p-3 bg-white/70 dark:bg-gray-800/70 rounded border-l-4 border-green-500">
+              <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                ✅ AI monitoring is automatically enabled for all cameras and runs 24/7 in the background
+              </p>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Add Camera Form */}
         {showAddForm && (
